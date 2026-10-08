@@ -17,6 +17,10 @@ import {
   Lock,
   X,
   ChevronRight,
+  Sliders,
+  Trash2,
+  Check,
+  Building,
 } from 'lucide-react';
 import {
   computeGrossToNet,
@@ -32,6 +36,14 @@ import {
   PayCycleType,
   GrossToNetResult,
   TaxStatus,
+  CompanyPayrollPolicy,
+  CustomPayComponent,
+  CustomLineItem,
+  DEFAULT_SME_POLICY,
+  ACCENTURE_ENTERPRISE_PRESET,
+  DeductionTimingOption,
+  StatutorySalaryBasis,
+  TaxTreatment,
 } from './index';
 
 interface EmployeeRecord extends Employee {
@@ -133,13 +145,18 @@ const INITIAL_EMPLOYEES: EmployeeRecord[] = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<
-    'runs' | 'calc' | 'employees' | 'statutory' | 'backup'
+    'runs' | 'calc' | 'employees' | 'policy' | 'statutory' | 'backup'
   >('runs');
   const [employees, setEmployees] = useState<EmployeeRecord[]>(INITIAL_EMPLOYEES);
+
+  // Active Company Payroll Policy & Preset
+  const [currentPolicy, setCurrentPolicy] = useState<CompanyPayrollPolicy>(DEFAULT_SME_POLICY);
+  const [policyPreset, setPolicyPreset] = useState<'SME' | 'ACCENTURE' | 'CUSTOM'>('SME');
 
   // Single Calculator State
   const [basicSalaryPesos, setBasicSalaryPesos] = useState<number>(30000);
   const [calcCycleType, setCalcCycleType] = useState<PayCycleType>('semi_monthly');
+  const [calcCutoff, setCalcCutoff] = useState<'first' | 'second'>('first');
   const [workingDaysFactor, setWorkingDaysFactor] = useState<261 | 313>(261);
   const [otHours, setOtHours] = useState<number>(4);
   const [nightDiffHours, setNightDiffHours] = useState<number>(0);
@@ -149,6 +166,18 @@ export default function App() {
   const [taxableAllowancePesos, setTaxableAllowancePesos] = useState<number>(0);
   const [otherDeductionsPesos, setOtherDeductionsPesos] = useState<number>(0);
   const [voluntaryPagIbigPesos, setVoluntaryPagIbigPesos] = useState<number>(0);
+  const [customSssPesos, setCustomSssPesos] = useState<string>('');
+  const [pagibigTiming, setPagibigTiming] = useState<'split' | 'full_first'>('split');
+
+  // Dynamic Custom Line Items in Live Calculator
+  const [calcCustomItems, setCalcCustomItems] = useState<CustomLineItem[]>([]);
+
+  // Policy Component Modal State
+  const [showAddComponentModal, setShowAddComponentModal] = useState<boolean>(false);
+  const [newCompCode, setNewCompCode] = useState<string>('');
+  const [newCompName, setNewCompName] = useState<string>('');
+  const [newCompCategory, setNewCompCategory] = useState<'EARNING' | 'DEDUCTION'>('EARNING');
+  const [newCompTreatment, setNewCompTreatment] = useState<TaxTreatment>('TAXABLE');
 
   // Batch Payroll Run Wizard State
   const [payrollRuns, setPayrollRuns] = useState<PayrollRunRecord[]>([]);
@@ -236,15 +265,22 @@ export default function App() {
 
     return computeGrossToNet(mockEmployee, mockAttendance, {
       cycleType: calcCycleType,
-      statutoryTiming: 'split_equally',
+      isSecondCutoff: calcCutoff === 'second',
+      policy: currentPolicy,
       nonTaxableAllowancesCentavos: pesosToCentavos(nonTaxableAllowancePesos),
       taxableAllowancesCentavos: pesosToCentavos(taxableAllowancePesos),
       otherDeductionsCentavos: pesosToCentavos(otherDeductionsPesos),
       voluntaryPagIbigPesos,
+      customSssEeCentavos:
+        customSssPesos.trim() !== '' ? pesosToCentavos(Number(customSssPesos)) : undefined,
+      customPagIbigEeCentavos: pagibigTiming === 'full_first' ? pesosToCentavos(200) : undefined,
+      customLineItems: calcCustomItems,
     });
   }, [
     basicSalaryPesos,
     calcCycleType,
+    calcCutoff,
+    currentPolicy,
     otHours,
     nightDiffHours,
     tardinessMins,
@@ -253,6 +289,9 @@ export default function App() {
     taxableAllowancePesos,
     otherDeductionsPesos,
     voluntaryPagIbigPesos,
+    customSssPesos,
+    pagibigTiming,
+    calcCustomItems,
   ]);
 
   const dailyRateCentavos = deriveDailyRate(pesosToCentavos(basicSalaryPesos), workingDaysFactor);
@@ -289,9 +328,13 @@ export default function App() {
         holidayHours: 0,
       };
 
+      const isSecondCutoffRun =
+        wizardPeriodName.toLowerCase().includes('2nd') ||
+        wizardPeriodName.toLowerCase().includes('second');
       const result = computeGrossToNet(emp, att, {
         cycleType: wizardCycleType,
-        statutoryTiming: 'split_equally',
+        isSecondCutoff: isSecondCutoffRun,
+        policy: currentPolicy,
         nonTaxableAllowancesCentavos: pesosToCentavos(inputs.allowance),
         otherDeductionsCentavos: pesosToCentavos(inputs.loan),
       });
@@ -421,10 +464,10 @@ export default function App() {
           </div>
           <div>
             <h1 style={{ fontSize: '1.15rem', fontWeight: 700, letterSpacing: '-0.02em' }}>
-              Acme Philippines Corp. • Payroll Enterprise
+              {currentPolicy.companyName} • Payroll Enterprise
             </h1>
             <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-              Multi-Tenant &amp; Philippine Statutory Compliant Desktop System
+              Multi-Tenant &amp; Configurable Philippine Statutory Payroll System
             </p>
           </div>
         </div>
@@ -511,6 +554,25 @@ export default function App() {
         >
           <Calculator size={18} />
           Live Calculator &amp; Simulator
+        </button>
+
+        <button
+          onClick={() => setActiveTab('policy')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.9rem 0.25rem',
+            border: 'none',
+            background: 'none',
+            borderBottom: activeTab === 'policy' ? '3px solid #2563eb' : '3px solid transparent',
+            color: activeTab === 'policy' ? '#2563eb' : '#64748b',
+            fontWeight: activeTab === 'policy' ? 600 : 500,
+            fontSize: '0.9rem',
+          }}
+        >
+          <Sliders size={18} />
+          Company Policy &amp; Rules
         </button>
 
         <button
@@ -947,688 +1009,1252 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB: LIVE CALCULATOR (Unchanged) */}
+        {/* TAB: LIVE CALCULATOR */}
         {activeTab === 'calc' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '1.75rem' }}>
-            {/* Input Controls Panel */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {/* Quick Policy & Scenario Bar */}
             <div
               style={{
                 backgroundColor: '#ffffff',
                 borderRadius: '10px',
                 border: '1px solid #e2e8f0',
-                padding: '1.5rem',
+                padding: '1rem 1.25rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                flexWrap: 'wrap',
+                gap: '1rem',
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  marginBottom: '1.25rem',
-                }}
-              >
-                <Briefcase size={20} color="#2563eb" />
-                <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Compensation &amp; Inputs</h2>
-              </div>
-
-              {/* Basic Salary */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '0.4rem',
-                  }}
-                >
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
-                    Monthly Basic Salary (₱)
-                  </label>
-                  <input
-                    type="number"
-                    min="5000"
-                    step="500"
-                    value={basicSalaryPesos}
-                    onChange={(e) => setBasicSalaryPesos(Number(e.target.value))}
-                    style={{
-                      width: '130px',
-                      padding: '0.35rem 0.5rem',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontWeight: 700,
-                      fontSize: '0.9rem',
-                      textAlign: 'right',
-                    }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min="10000"
-                  max="120000"
-                  step="500"
-                  value={basicSalaryPesos}
-                  onChange={(e) => setBasicSalaryPesos(Number(e.target.value))}
-                  style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }}
-                />
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: '0.72rem',
-                    color: '#94a3b8',
-                  }}
-                >
-                  <span>₱10,000 (Min)</span>
-                  <span>₱50,000</span>
-                  <span>₱120,000 (Max)</span>
-                </div>
-              </div>
-
-              {/* Pay Cycle & Factor */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '0.75rem',
-                  marginBottom: '1.25rem',
-                }}
-              >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <Sliders size={20} color="#2563eb" />
                 <div>
-                  <label
-                    style={{
-                      display: 'block',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      color: '#334155',
-                      marginBottom: '0.3rem',
-                    }}
-                  >
-                    Pay Cycle
-                  </label>
-                  <select
-                    value={calcCycleType}
-                    onChange={(e) => setCalcCycleType(e.target.value as PayCycleType)}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    <option value="semi_monthly">Semi-Monthly (15th/30th)</option>
-                    <option value="monthly">Full Monthly</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: 'block',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      color: '#334155',
-                      marginBottom: '0.3rem',
-                    }}
-                  >
-                    Days Factor
-                  </label>
-                  <select
-                    value={workingDaysFactor}
-                    onChange={(e) => setWorkingDaysFactor(Number(e.target.value) as 261 | 313)}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    <option value={261}>Factor 261 (Mon-Fri)</option>
-                    <option value={313}>Factor 313 (Mon-Sat)</option>
-                  </select>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                    Active Policy:{' '}
+                    <span style={{ color: '#2563eb' }}>{currentPolicy.companyName}</span> (
+                    {policyPreset === 'SME'
+                      ? 'Standard SME'
+                      : policyPreset === 'ACCENTURE'
+                        ? 'Accenture Enterprise'
+                        : 'Custom'}
+                    )
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Pag-IBIG:{' '}
+                    {currentPolicy.pagibigTiming === 'first_cutoff_only'
+                      ? '100% on 1st Cut-Off (₱200)'
+                      : 'Split 50/50 (₱100/₱100)'}{' '}
+                    • SSS:{' '}
+                    {currentPolicy.sssTiming === 'corporate_tiered'
+                      ? 'Corporate Tiered'
+                      : 'Split 50/50'}{' '}
+                    • PhilHealth: Split 50/50
+                  </div>
                 </div>
               </div>
 
-              {/* Rates breakdown indicator */}
+              {/* Preset Scenario Loaders */}
               <div
-                style={{
-                  backgroundColor: '#f8fafc',
-                  padding: '0.75rem',
-                  borderRadius: '6px',
-                  marginBottom: '1.25rem',
-                  fontSize: '0.78rem',
-                  color: '#475569',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  border: '1px solid #e2e8f0',
-                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
               >
-                <span>
-                  Daily: <strong>{formatPHP(dailyRateCentavos)}</strong>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>
+                  Load Real Scenarios:
                 </span>
-                <span>
-                  Hourly: <strong>{formatPHP(hourlyRateCentavos)}</strong>
-                </span>
-                <span>
-                  OT/hr: <strong>{formatPHP(Math.round(hourlyRateCentavos * 1.25))}</strong>
-                </span>
-              </div>
-
-              {/* Attendance Adjustments */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h3
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentPolicy(DEFAULT_SME_POLICY);
+                    setPolicyPreset('SME');
+                    setBasicSalaryPesos(30000);
+                    setCalcCutoff('first');
+                    setNonTaxableAllowancePesos(1000);
+                    setTaxableAllowancePesos(0);
+                    setOtherDeductionsPesos(0);
+                    setCustomSssPesos('');
+                    setPagibigTiming('split');
+                    setCalcCustomItems([]);
+                  }}
                   style={{
-                    fontSize: '0.85rem',
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
                     fontWeight: 600,
-                    color: '#1e293b',
-                    marginBottom: '0.6rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
+                    border: policyPreset === 'SME' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                    backgroundColor: policyPreset === 'SME' ? '#eff6ff' : '#ffffff',
+                    color: policyPreset === 'SME' ? '#2563eb' : '#334155',
+                    cursor: 'pointer',
                   }}
                 >
-                  <Clock size={16} color="#64748b" />
-                  Timekeeping &amp; Overtime
-                </h3>
+                  Standard SME (₱30k)
+                </button>
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '0.75rem',
-                    marginBottom: '0.75rem',
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentPolicy(ACCENTURE_ENTERPRISE_PRESET);
+                    setPolicyPreset('ACCENTURE');
+                    setBasicSalaryPesos(21000); // ₱10,500 semi-monthly
+                    setCalcCutoff('first');
+                    setNonTaxableAllowancePesos(0);
+                    setTaxableAllowancePesos(0);
+                    setOtherDeductionsPesos(0);
+                    setCustomSssPesos('725');
+                    setPagibigTiming('full_first');
+                    setCalcCustomItems([
+                      {
+                        code: 'DEMINIMIS',
+                        name: 'Fixed De Minimis',
+                        category: 'EARNING',
+                        treatment: 'NON_TAXABLE_DE_MINIMIS',
+                        amountCentavos: 280000, // ₱2,800.00
+                      },
+                      {
+                        code: 'HOLIDAY_OT',
+                        name: 'Holiday Overtime',
+                        category: 'EARNING',
+                        treatment: 'TAXABLE',
+                        amountCentavos: 125518, // ₱1,255.18
+                      },
+                      {
+                        code: 'HMO_SILVER1',
+                        name: 'HMO Contri Parent Silver1',
+                        category: 'DEDUCTION',
+                        treatment: 'POST_TAX_DEDUCTION',
+                        amountCentavos: 43880, // ₱438.80
+                      },
+                    ]);
                   }}
-                >
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        marginBottom: '0.2rem',
-                      }}
-                    >
-                      Regular OT (Hours)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={otHours}
-                      onChange={(e) => setOtHours(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        marginBottom: '0.2rem',
-                      }}
-                    >
-                      Night Diff (Hours)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={nightDiffHours}
-                      onChange={(e) => setNightDiffHours(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        marginBottom: '0.2rem',
-                      }}
-                    >
-                      Tardiness (Minutes)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={tardinessMins}
-                      onChange={(e) => setTardinessMins(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        marginBottom: '0.2rem',
-                      }}
-                    >
-                      Absences (Days)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={absentDays}
-                      onChange={(e) => setAbsentDays(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Allowances & Deductions */}
-              <div>
-                <h3
                   style={{
-                    fontSize: '0.85rem',
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
                     fontWeight: 600,
-                    color: '#1e293b',
-                    marginBottom: '0.6rem',
+                    border:
+                      policyPreset === 'ACCENTURE' && calcCutoff === 'first'
+                        ? '1px solid #2563eb'
+                        : '1px solid #cbd5e1',
+                    backgroundColor:
+                      policyPreset === 'ACCENTURE' && calcCutoff === 'first'
+                        ? '#eff6ff'
+                        : '#ffffff',
+                    color:
+                      policyPreset === 'ACCENTURE' && calcCutoff === 'first'
+                        ? '#2563eb'
+                        : '#334155',
+                    cursor: 'pointer',
                   }}
                 >
-                  Allowances &amp; Other Deductions
-                </h3>
+                  Accenture 09/15 (1st Cut-Off)
+                </button>
 
-                <div
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentPolicy(ACCENTURE_ENTERPRISE_PRESET);
+                    setPolicyPreset('ACCENTURE');
+                    setBasicSalaryPesos(21000); // ₱10,500 semi-monthly
+                    setCalcCutoff('second');
+                    setNonTaxableAllowancePesos(0);
+                    setTaxableAllowancePesos(0);
+                    setOtherDeductionsPesos(0);
+                    setCustomSssPesos('725');
+                    setPagibigTiming('split');
+                    setCalcCustomItems([
+                      {
+                        code: 'REFERRAL_BONUS',
+                        name: 'Referral Bonus',
+                        category: 'EARNING',
+                        treatment: 'BONUS_90K_POOL',
+                        amountCentavos: 500000, // ₱5,000.00 tax-exempt
+                      },
+                    ]);
+                  }}
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '0.75rem',
-                    marginBottom: '0.75rem',
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    border:
+                      policyPreset === 'ACCENTURE' && calcCutoff === 'second'
+                        ? '1px solid #2563eb'
+                        : '1px solid #cbd5e1',
+                    backgroundColor:
+                      policyPreset === 'ACCENTURE' && calcCutoff === 'second'
+                        ? '#eff6ff'
+                        : '#ffffff',
+                    color:
+                      policyPreset === 'ACCENTURE' && calcCutoff === 'second'
+                        ? '#2563eb'
+                        : '#334155',
+                    cursor: 'pointer',
                   }}
                 >
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        marginBottom: '0.2rem',
-                      }}
-                    >
-                      Fixed De Minimis / Non-Taxable (₱)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={nonTaxableAllowancePesos}
-                      onChange={(e) => setNonTaxableAllowancePesos(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        marginBottom: '0.2rem',
-                      }}
-                    >
-                      Holiday OT / Taxable Earnings (₱)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={taxableAllowancePesos}
-                      onChange={(e) => setTaxableAllowancePesos(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        marginBottom: '0.2rem',
-                      }}
-                    >
-                      HMO / Loans / After-Tax Ded. (₱)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={otherDeductionsPesos}
-                      onChange={(e) => setOtherDeductionsPesos(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        marginBottom: '0.2rem',
-                      }}
-                    >
-                      Voluntary Pag-IBIG (₱)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={voluntaryPagIbigPesos}
-                      onChange={(e) => setVoluntaryPagIbigPesos(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    />
-                  </div>
-                </div>
+                  Accenture 09/30 (2nd Cut-Off)
+                </button>
               </div>
             </div>
 
-            {/* Payslip & Computation Breakdown */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '1.75rem' }}>
+              {/* Input Controls Panel */}
               <div
                 style={{
-                  background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
-                  borderRadius: '12px',
-                  padding: '1.75rem',
-                  color: '#ffffff',
-                  boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  padding: '1.5rem',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                 }}
               >
-                <div>
-                  <span
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    marginBottom: '1.25rem',
+                  }}
+                >
+                  <Briefcase size={20} color="#2563eb" />
+                  <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Compensation &amp; Inputs</h2>
+                </div>
+
+                {/* Basic Salary */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div
                     style={{
-                      fontSize: '0.85rem',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                      color: '#bfdbfe',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.4rem',
                     }}
                   >
-                    Net Take-Home Pay (
-                    {calcCycleType === 'semi_monthly' ? 'Semi-Monthly' : 'Monthly'})
-                  </span>
-                  <div style={{ fontSize: '2.5rem', fontWeight: 800, marginTop: '0.2rem' }}>
-                    {formatPHP(calculationResult.netPayCentavos)}
+                    <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
+                      Monthly Basic Salary (₱)
+                    </label>
+                    <input
+                      type="number"
+                      min="5000"
+                      step="500"
+                      value={basicSalaryPesos}
+                      onChange={(e) => setBasicSalaryPesos(Number(e.target.value))}
+                      style={{
+                        width: '130px',
+                        padding: '0.35rem 0.5rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontWeight: 700,
+                        fontSize: '0.9rem',
+                        textAlign: 'right',
+                      }}
+                    />
                   </div>
-                  <div style={{ fontSize: '0.85rem', color: '#dbeafe', marginTop: '0.25rem' }}>
-                    Gross Pay: {formatPHP(calculationResult.grossPayCentavos)} • Total Deductions:{' '}
-                    {formatPHP(calculationResult.totalDeductionsCentavos)}
+                  <input
+                    type="range"
+                    min="10000"
+                    max="120000"
+                    step="500"
+                    value={basicSalaryPesos}
+                    onChange={(e) => setBasicSalaryPesos(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }}
+                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: '0.72rem',
+                      color: '#94a3b8',
+                    }}
+                  >
+                    <span>₱10,000 (Min)</span>
+                    <span>₱50,000</span>
+                    <span>₱120,000 (Max)</span>
                   </div>
                 </div>
 
+                {/* Pay Cycle & Factor */}
                 <div
                   style={{
-                    backgroundColor: 'rgba(255,255,255,0.15)',
-                    padding: '0.85rem 1.25rem',
-                    borderRadius: '8px',
-                    textAlign: 'right',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.75rem',
+                    marginBottom: '1.25rem',
                   }}
                 >
-                  <div style={{ fontSize: '0.75rem', color: '#e0e7ff' }}>Take-Home Ratio</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
-                    {(
-                      (calculationResult.netPayCentavos /
-                        (calculationResult.grossPayCentavos || 1)) *
-                      100
-                    ).toFixed(1)}
-                    %
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      Pay Cycle
+                    </label>
+                    <select
+                      value={calcCycleType}
+                      onChange={(e) => setCalcCycleType(e.target.value as PayCycleType)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <option value="semi_monthly">Semi-Monthly (15th/30th)</option>
+                      <option value="monthly">Full Monthly</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      Days Factor
+                    </label>
+                    <select
+                      value={workingDaysFactor}
+                      onChange={(e) => setWorkingDaysFactor(Number(e.target.value) as 261 | 313)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <option value={261}>Factor 261 (Mon-Fri)</option>
+                      <option value={313}>Factor 313 (Mon-Sat)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Cut-Off Period Timing Toggle */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.4rem',
+                    }}
+                  >
+                    <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                      Active Cut-Off Timing
+                    </label>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      {calcCutoff === 'first'
+                        ? '1st Period (1st–15th)'
+                        : '2nd Period (16th–30th/31st)'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCalcCutoff('first')}
+                      style={{
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        border: calcCutoff === 'first' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                        backgroundColor: calcCutoff === 'first' ? '#eff6ff' : '#f8fafc',
+                        color: calcCutoff === 'first' ? '#2563eb' : '#64748b',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      1st Cut-Off
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCalcCutoff('second')}
+                      style={{
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        border: calcCutoff === 'second' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                        backgroundColor: calcCutoff === 'second' ? '#eff6ff' : '#f8fafc',
+                        color: calcCutoff === 'second' ? '#2563eb' : '#64748b',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      2nd Cut-Off
+                    </button>
+                  </div>
+                </div>
+
+                {/* Rates breakdown indicator */}
+                <div
+                  style={{
+                    backgroundColor: '#f8fafc',
+                    padding: '0.75rem',
+                    borderRadius: '6px',
+                    marginBottom: '1.25rem',
+                    fontSize: '0.78rem',
+                    color: '#475569',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <span>
+                    Daily: <strong>{formatPHP(dailyRateCentavos)}</strong>
+                  </span>
+                  <span>
+                    Hourly: <strong>{formatPHP(hourlyRateCentavos)}</strong>
+                  </span>
+                  <span>
+                    OT/hr: <strong>{formatPHP(Math.round(hourlyRateCentavos * 1.25))}</strong>
+                  </span>
+                </div>
+
+                {/* Attendance Adjustments */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <h3
+                    style={{
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      marginBottom: '0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                    }}
+                  >
+                    <Clock size={16} color="#64748b" />
+                    Timekeeping &amp; Overtime
+                  </h3>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '0.75rem',
+                      marginBottom: '0.75rem',
+                    }}
+                  >
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        Regular OT (Hours)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={otHours}
+                        onChange={(e) => setOtHours(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        Night Diff (Hours)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={nightDiffHours}
+                        onChange={(e) => setNightDiffHours(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        Tardiness (Minutes)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={tardinessMins}
+                        onChange={(e) => setTardinessMins(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        Absences (Days)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={absentDays}
+                        onChange={(e) => setAbsentDays(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Allowances & Deductions */}
+                <div>
+                  <h3
+                    style={{
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      marginBottom: '0.6rem',
+                    }}
+                  >
+                    Allowances &amp; Other Deductions
+                  </h3>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '0.75rem',
+                      marginBottom: '0.75rem',
+                    }}
+                  >
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        Fixed De Minimis / Non-Taxable (₱)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={nonTaxableAllowancePesos}
+                        onChange={(e) => setNonTaxableAllowancePesos(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        Holiday OT / Taxable Earnings (₱)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={taxableAllowancePesos}
+                        onChange={(e) => setTaxableAllowancePesos(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        HMO / Loans / After-Tax Ded. (₱)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={otherDeductionsPesos}
+                        onChange={(e) => setOtherDeductionsPesos(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        Voluntary Pag-IBIG (₱)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={voluntaryPagIbigPesos}
+                        onChange={(e) => setVoluntaryPagIbigPesos(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '0.75rem',
+                      marginTop: '0.75rem',
+                    }}
+                  >
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        Pag-IBIG Timing
+                      </label>
+                      <select
+                        value={pagibigTiming}
+                        onChange={(e) => setPagibigTiming(e.target.value as 'split' | 'full_first')}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.8rem',
+                        }}
+                      >
+                        <option value="split">Split ₱100 / cut-off</option>
+                        <option value="full_first">Full ₱200 on 1st Cut-Off</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          color: '#475569',
+                          marginBottom: '0.2rem',
+                        }}
+                      >
+                        SSS EE Share (₱ Override)
+                      </label>
+                      <input
+                        placeholder="Auto (₱472.50)"
+                        value={customSssPesos}
+                        onChange={(e) => setCustomSssPesos(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.8rem',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Custom Pay Components List in Live Calculator */}
+                  <div
+                    style={{
+                      marginTop: '1rem',
+                      borderTop: '1px dashed #cbd5e1',
+                      paddingTop: '0.75rem',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b' }}>
+                        Custom Pay Components ({calcCustomItems.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCalcCustomItems([
+                            ...calcCustomItems,
+                            {
+                              code: 'COMP_' + (calcCustomItems.length + 1),
+                              name: 'Allowance / Incentive',
+                              category: 'EARNING',
+                              treatment: 'NON_TAXABLE_DE_MINIMIS',
+                              amountCentavos: pesosToCentavos(1000),
+                            },
+                          ]);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          color: '#2563eb',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Plus size={13} /> Add Item
+                      </button>
+                    </div>
+
+                    {calcCustomItems.length === 0 ? (
+                      <div style={{ fontSize: '0.74rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                        No custom line items. Click &quot;Add Item&quot; or choose a real scenario
+                        above.
+                      </div>
+                    ) : (
+                      calcCustomItems.map((item, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            backgroundColor: '#f8fafc',
+                            borderRadius: '6px',
+                            padding: '0.5rem',
+                            marginBottom: '0.45rem',
+                            border: '1px solid #e2e8f0',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.35rem',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <input
+                              value={item.name}
+                              onChange={(e) => {
+                                const updated = [...calcCustomItems];
+                                updated[idx].name = e.target.value;
+                                setCalcCustomItems(updated);
+                              }}
+                              placeholder="Item Name"
+                              style={{
+                                fontSize: '0.78rem',
+                                fontWeight: 600,
+                                border: 'none',
+                                background: 'transparent',
+                                width: '160px',
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = calcCustomItems.filter((_, i) => i !== idx);
+                                setCalcCustomItems(updated);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                padding: 0,
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 90px',
+                              gap: '0.4rem',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <select
+                              value={item.treatment}
+                              onChange={(e) => {
+                                const updated = [...calcCustomItems];
+                                const newTreatment = e.target.value as TaxTreatment;
+                                updated[idx].treatment = newTreatment;
+                                updated[idx].category =
+                                  newTreatment === 'PRE_TAX_DEDUCTION' ||
+                                  newTreatment === 'POST_TAX_DEDUCTION'
+                                    ? 'DEDUCTION'
+                                    : 'EARNING';
+                                setCalcCustomItems(updated);
+                              }}
+                              style={{
+                                fontSize: '0.72rem',
+                                padding: '0.25rem',
+                                borderRadius: '4px',
+                                border: '1px solid #cbd5e1',
+                              }}
+                            >
+                              <option value="TAXABLE">Taxable Earning</option>
+                              <option value="NON_TAXABLE_DE_MINIMIS">Non-Taxable De Minimis</option>
+                              <option value="BONUS_90K_POOL">₱90k Exempt Pool</option>
+                              <option value="POST_TAX_DEDUCTION">Post-Tax HMO / Loan</option>
+                              <option value="PRE_TAX_DEDUCTION">Pre-Tax Deduction</option>
+                            </select>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={centavosToPesos(item.amountCentavos)}
+                              onChange={(e) => {
+                                const updated = [...calcCustomItems];
+                                updated[idx].amountCentavos = pesosToCentavos(
+                                  Number(e.target.value)
+                                );
+                                setCalcCustomItems(updated);
+                              }}
+                              style={{
+                                fontSize: '0.75rem',
+                                padding: '0.25rem',
+                                borderRadius: '4px',
+                                border: '1px solid #cbd5e1',
+                                textAlign: 'right',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Three Column Breakdown */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.25rem' }}>
+              {/* Payslip & Computation Breakdown */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div
                   style={{
-                    backgroundColor: '#ffffff',
-                    borderRadius: '10px',
-                    border: '1px solid #e2e8f0',
-                    padding: '1.25rem',
+                    background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
+                    borderRadius: '12px',
+                    padding: '1.75rem',
+                    color: '#ffffff',
+                    boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                   }}
                 >
-                  <h3
-                    style={{
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      color: '#16a34a',
-                      borderBottom: '2px solid #bbf7d0',
-                      paddingBottom: '0.5rem',
-                      marginBottom: '0.75rem',
-                    }}
-                  >
-                    Gross Earnings
-                  </h3>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.5rem',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Basic Pay</span>
-                      <strong>{formatPHP(calculationResult.basicPayCentavos)}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Overtime ({otHours} hrs)</span>
-                      <span>{formatPHP(calculationResult.overtimePayCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Night Diff ({nightDiffHours} hrs)</span>
-                      <span>{formatPHP(calculationResult.nightDiffPayCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Non-Taxable Allowances</span>
-                      <span>{formatPHP(calculationResult.nonTaxableAllowancesCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Taxable Allowances</span>
-                      <span>{formatPHP(calculationResult.taxableAllowancesCentavos)}</span>
-                    </div>
-                    <div
+                  <div>
+                    <span
                       style={{
-                        borderTop: '1px dashed #cbd5e1',
-                        paddingTop: '0.5rem',
-                        marginTop: '0.25rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        color: '#bfdbfe',
                       }}
                     >
-                      <span>Total Gross</span>
-                      <span style={{ color: '#16a34a' }}>
-                        {formatPHP(calculationResult.grossPayCentavos)}
-                      </span>
+                      Net Take-Home Pay (
+                      {calcCycleType === 'semi_monthly' ? 'Semi-Monthly' : 'Monthly'})
+                    </span>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 800, marginTop: '0.2rem' }}>
+                      {formatPHP(calculationResult.netPayCentavos)}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: '#dbeafe', marginTop: '0.25rem' }}>
+                      Gross Pay: {formatPHP(calculationResult.grossPayCentavos)} • Total Deductions:{' '}
+                      {formatPHP(calculationResult.totalDeductionsCentavos)}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      backgroundColor: 'rgba(255,255,255,0.15)',
+                      padding: '0.85rem 1.25rem',
+                      borderRadius: '8px',
+                      textAlign: 'right',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', color: '#e0e7ff' }}>Take-Home Ratio</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+                      {(
+                        (calculationResult.netPayCentavos /
+                          (calculationResult.grossPayCentavos || 1)) *
+                        100
+                      ).toFixed(1)}
+                      %
                     </div>
                   </div>
                 </div>
 
+                {/* Three Column Breakdown */}
                 <div
-                  style={{
-                    backgroundColor: '#ffffff',
-                    borderRadius: '10px',
-                    border: '1px solid #e2e8f0',
-                    padding: '1.25rem',
-                  }}
+                  style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.25rem' }}
                 >
-                  <h3
-                    style={{
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      color: '#dc2626',
-                      borderBottom: '2px solid #fecaca',
-                      paddingBottom: '0.5rem',
-                      marginBottom: '0.75rem',
-                    }}
-                  >
-                    Employee Deductions
-                  </h3>
                   <div
                     style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.5rem',
-                      fontSize: '0.85rem',
+                      backgroundColor: '#ffffff',
+                      borderRadius: '10px',
+                      border: '1px solid #e2e8f0',
+                      padding: '1.25rem',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>SSS Contribution</span>
-                      <span>{formatPHP(calculationResult.sssEeCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>PhilHealth Premium (5%)</span>
-                      <span>{formatPHP(calculationResult.philhealthEeCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Pag-IBIG (HDMF)</span>
-                      <span>{formatPHP(calculationResult.pagibigEeCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>BIR Withholding Tax</span>
-                      <strong style={{ color: '#b91c1c' }}>
-                        {formatPHP(calculationResult.withholdingTaxCentavos)}
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Tardiness / Undertime</span>
-                      <span>{formatPHP(calculationResult.tardinessDeductionCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Absences</span>
-                      <span>{formatPHP(calculationResult.absencesDeductionCentavos)}</span>
-                    </div>
-                    <div
+                    <h3
                       style={{
-                        borderTop: '1px dashed #cbd5e1',
-                        paddingTop: '0.5rem',
-                        marginTop: '0.25rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
+                        fontSize: '0.9rem',
                         fontWeight: 700,
+                        color: '#16a34a',
+                        borderBottom: '2px solid #bbf7d0',
+                        paddingBottom: '0.5rem',
+                        marginBottom: '0.75rem',
                       }}
                     >
-                      <span>Total Deductions</span>
-                      <span style={{ color: '#dc2626' }}>
-                        {formatPHP(calculationResult.totalDeductionsCentavos)}
-                      </span>
+                      Gross Earnings
+                    </h3>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>Basic Pay</span>
+                        <strong>{formatPHP(calculationResult.basicPayCentavos)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>Overtime ({otHours} hrs)</span>
+                        <span>{formatPHP(calculationResult.overtimePayCentavos)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>Night Diff ({nightDiffHours} hrs)</span>
+                        <span>{formatPHP(calculationResult.nightDiffPayCentavos)}</span>
+                      </div>
+                      {calculationResult.nonTaxableAllowancesCentavos > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#64748b' }}>Non-Taxable Allowances</span>
+                          <span>{formatPHP(calculationResult.nonTaxableAllowancesCentavos)}</span>
+                        </div>
+                      )}
+                      {calculationResult.taxableAllowancesCentavos > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#64748b' }}>Taxable Allowances</span>
+                          <span>{formatPHP(calculationResult.taxableAllowancesCentavos)}</span>
+                        </div>
+                      )}
+                      {calcCustomItems
+                        .filter((item) => item.category === 'EARNING')
+                        .map((item, idx) => (
+                          <div
+                            key={idx}
+                            style={{ display: 'flex', justifyContent: 'space-between' }}
+                          >
+                            <span style={{ color: '#64748b' }}>
+                              {item.name}
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  marginLeft: '4px',
+                                  color: '#0369a1',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                (
+                                {item.treatment === 'NON_TAXABLE_DE_MINIMIS'
+                                  ? 'De Minimis'
+                                  : item.treatment === 'BONUS_90K_POOL'
+                                    ? '₱90k Pool'
+                                    : 'Taxable'}
+                                )
+                              </span>
+                            </span>
+                            <span>{formatPHP(item.amountCentavos)}</span>
+                          </div>
+                        ))}
+                      <div
+                        style={{
+                          borderTop: '1px dashed #cbd5e1',
+                          paddingTop: '0.5rem',
+                          marginTop: '0.25rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <span>Total Gross</span>
+                        <span style={{ color: '#16a34a' }}>
+                          {formatPHP(calculationResult.grossPayCentavos)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div
-                  style={{
-                    backgroundColor: '#ffffff',
-                    borderRadius: '10px',
-                    border: '1px solid #e2e8f0',
-                    padding: '1.25rem',
-                  }}
-                >
-                  <h3
-                    style={{
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      color: '#475569',
-                      borderBottom: '2px solid #cbd5e1',
-                      paddingBottom: '0.5rem',
-                      marginBottom: '0.75rem',
-                    }}
-                  >
-                    Employer Contributions
-                  </h3>
                   <div
                     style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.5rem',
-                      fontSize: '0.85rem',
+                      backgroundColor: '#ffffff',
+                      borderRadius: '10px',
+                      border: '1px solid #e2e8f0',
+                      padding: '1.25rem',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>SSS Employer (+EC)</span>
-                      <span>{formatPHP(calculationResult.sssErCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>PhilHealth Employer</span>
-                      <span>{formatPHP(calculationResult.philhealthErCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Pag-IBIG Employer</span>
-                      <span>{formatPHP(calculationResult.pagibigErCentavos)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Total Contrib (ER)</span>
-                      <strong>
-                        {formatPHP(calculationResult.totalEmployerContributionsCentavos)}
-                      </strong>
-                    </div>
-                    <div
+                    <h3
                       style={{
-                        borderTop: '1px dashed #cbd5e1',
-                        paddingTop: '0.5rem',
-                        marginTop: '0.25rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
+                        fontSize: '0.9rem',
                         fontWeight: 700,
+                        color: '#dc2626',
+                        borderBottom: '2px solid #fecaca',
+                        paddingBottom: '0.5rem',
+                        marginBottom: '0.75rem',
                       }}
                     >
-                      <span>Total Company Cost</span>
-                      <span style={{ color: '#1e293b' }}>
-                        {formatPHP(calculationResult.totalCostToEmployerCentavos)}
-                      </span>
+                      Employee Deductions
+                    </h3>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>
+                          SSS Contribution
+                          {currentPolicy.sssTiming === 'corporate_tiered' && (
+                            <span
+                              style={{
+                                fontSize: '0.68rem',
+                                color: '#6366f1',
+                                marginLeft: '4px',
+                                fontWeight: 600,
+                              }}
+                            >
+                              [Tiered]
+                            </span>
+                          )}
+                        </span>
+                        <span>{formatPHP(calculationResult.sssEeCentavos)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>PhilHealth Premium (5%)</span>
+                        <span>{formatPHP(calculationResult.philhealthEeCentavos)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>
+                          Pag-IBIG (HDMF)
+                          {currentPolicy.pagibigTiming === 'first_cutoff_only' && (
+                            <span
+                              style={{
+                                fontSize: '0.68rem',
+                                color: '#0284c7',
+                                marginLeft: '4px',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {calcCutoff === 'first' ? '[Full ₱200]' : '[₱0 on 2nd]'}
+                            </span>
+                          )}
+                        </span>
+                        <span>{formatPHP(calculationResult.pagibigEeCentavos)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>BIR Withholding Tax</span>
+                        <strong style={{ color: '#b91c1c' }}>
+                          {formatPHP(calculationResult.withholdingTaxCentavos)}
+                        </strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>Tardiness / Undertime</span>
+                        <span>{formatPHP(calculationResult.tardinessDeductionCentavos)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>Absences</span>
+                        <span>{formatPHP(calculationResult.absencesDeductionCentavos)}</span>
+                      </div>
+                      {calcCustomItems
+                        .filter((item) => item.category === 'DEDUCTION')
+                        .map((item, idx) => (
+                          <div
+                            key={idx}
+                            style={{ display: 'flex', justifyContent: 'space-between' }}
+                          >
+                            <span style={{ color: '#64748b' }}>
+                              {item.name}
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  marginLeft: '4px',
+                                  color: '#b91c1c',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                ({item.treatment === 'PRE_TAX_DEDUCTION' ? 'Pre-Tax' : 'Post-Tax'})
+                              </span>
+                            </span>
+                            <span>{formatPHP(item.amountCentavos)}</span>
+                          </div>
+                        ))}
+                      {calculationResult.otherDeductionsCentavos > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#64748b' }}>Other After-Tax Deductions</span>
+                          <span>{formatPHP(calculationResult.otherDeductionsCentavos)}</span>
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          borderTop: '1px dashed #cbd5e1',
+                          paddingTop: '0.5rem',
+                          marginTop: '0.25rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <span>Total Deductions</span>
+                        <span style={{ color: '#dc2626' }}>
+                          {formatPHP(calculationResult.totalDeductionsCentavos)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      backgroundColor: '#ffffff',
+                      borderRadius: '10px',
+                      border: '1px solid #e2e8f0',
+                      padding: '1.25rem',
+                    }}
+                  >
+                    <h3
+                      style={{
+                        fontSize: '0.9rem',
+                        fontWeight: 700,
+                        color: '#475569',
+                        borderBottom: '2px solid #cbd5e1',
+                        paddingBottom: '0.5rem',
+                        marginBottom: '0.75rem',
+                      }}
+                    >
+                      Employer Contributions
+                    </h3>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>SSS Employer (+EC)</span>
+                        <span>{formatPHP(calculationResult.sssErCentavos)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>PhilHealth Employer</span>
+                        <span>{formatPHP(calculationResult.philhealthErCentavos)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>Pag-IBIG Employer</span>
+                        <span>{formatPHP(calculationResult.pagibigErCentavos)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b' }}>Total Contrib (ER)</span>
+                        <strong>
+                          {formatPHP(calculationResult.totalEmployerContributionsCentavos)}
+                        </strong>
+                      </div>
+                      <div
+                        style={{
+                          borderTop: '1px dashed #cbd5e1',
+                          paddingTop: '0.5rem',
+                          marginTop: '0.25rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <span>Total Company Cost</span>
+                        <span style={{ color: '#1e293b' }}>
+                          {formatPHP(calculationResult.totalCostToEmployerCentavos)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2126,6 +2752,879 @@ export default function App() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* TAB: COMPANY POLICY & RULES */}
+        {activeTab === 'policy' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Header */}
+            <div
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                padding: '1.5rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '1rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <div
+                  style={{
+                    backgroundColor: '#eff6ff',
+                    padding: '0.65rem',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Sliders size={24} color="#2563eb" />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+                    Philippine Corporate Payroll Policy &amp; Rules Engine
+                  </h2>
+                  <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                    Configure organization deduction schedules, statutory salary bases, and tax
+                    rules. Zero hardcoded rules—tailored for SMEs, BPOs, and multinationals.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => alert('Payroll policies updated and applied to all computations!')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    backgroundColor: '#16a34a',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '0.6rem 1.25rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Check size={16} /> Save Policy
+                </button>
+              </div>
+            </div>
+
+            {/* Policy Presets Selector */}
+            <div
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                padding: '1.5rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  color: '#0f172a',
+                  marginBottom: '0.35rem',
+                }}
+              >
+                Select Organization Blueprint / Preset
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1.25rem' }}>
+                Instantly switch your company&apos;s payroll engine to match a standard SME policy
+                or an enterprise multinational model.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                {/* Preset 1: Standard SME */}
+                <div
+                  onClick={() => {
+                    setCurrentPolicy(DEFAULT_SME_POLICY);
+                    setPolicyPreset('SME');
+                  }}
+                  style={{
+                    border: policyPreset === 'SME' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                    backgroundColor: policyPreset === 'SME' ? '#eff6ff' : '#ffffff',
+                    borderRadius: '8px',
+                    padding: '1.25rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.5rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                        color: policyPreset === 'SME' ? '#1d4ed8' : '#1e293b',
+                      }}
+                    >
+                      Standard SME Blueprint
+                    </span>
+                    {policyPreset === 'SME' && (
+                      <span
+                        style={{
+                          backgroundColor: '#2563eb',
+                          color: '#ffffff',
+                          fontSize: '0.7rem',
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '4px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        ACTIVE
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.75rem' }}>
+                    Labor Code standard. Splits SSS, PhilHealth, and Pag-IBIG 50/50 evenly across
+                    cut-offs. MSC based on basic pay.
+                  </p>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: '#475569',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <div>
+                      • Pag-IBIG: <strong>Split 50/50 (₱100 / ₱100)</strong>
+                    </div>
+                    <div>
+                      • SSS: <strong>Split 50/50 on Monthly MSC</strong>
+                    </div>
+                    <div>
+                      • PhilHealth: <strong>Split 50/50</strong>
+                    </div>
+                    <div>
+                      • Work Calendar: <strong>261 Days (Mon–Fri)</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preset 2: Accenture Enterprise */}
+                <div
+                  onClick={() => {
+                    setCurrentPolicy(ACCENTURE_ENTERPRISE_PRESET);
+                    setPolicyPreset('ACCENTURE');
+                  }}
+                  style={{
+                    border:
+                      policyPreset === 'ACCENTURE' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                    backgroundColor: policyPreset === 'ACCENTURE' ? '#eff6ff' : '#ffffff',
+                    borderRadius: '8px',
+                    padding: '1.25rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.5rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                        color: policyPreset === 'ACCENTURE' ? '#1d4ed8' : '#1e293b',
+                      }}
+                    >
+                      Accenture Enterprise Preset
+                    </span>
+                    {policyPreset === 'ACCENTURE' && (
+                      <span
+                        style={{
+                          backgroundColor: '#2563eb',
+                          color: '#ffffff',
+                          fontSize: '0.7rem',
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '4px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        ACTIVE
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.75rem' }}>
+                    Calibrated against real Accenture payslips. Deducts full ₱200 Pag-IBIG on 1st
+                    cut-off, corporate tiered SSS, and ₱90k pool bonus exemption.
+                  </p>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: '#475569',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <div>
+                      • Pag-IBIG: <strong>Full ₱200 on 1st, ₱0 on 2nd</strong>
+                    </div>
+                    <div>
+                      • SSS: <strong>Corporate Tiered / Total Comp</strong>
+                    </div>
+                    <div>
+                      • PhilHealth: <strong>Split 50/50 (₱262.50)</strong>
+                    </div>
+                    <div>
+                      • ₱90k Pool: <strong>Referral Bonus Exemption</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preset 3: Custom Organization */}
+                <div
+                  onClick={() => {
+                    setPolicyPreset('CUSTOM');
+                  }}
+                  style={{
+                    border: policyPreset === 'CUSTOM' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                    backgroundColor: policyPreset === 'CUSTOM' ? '#eff6ff' : '#ffffff',
+                    borderRadius: '8px',
+                    padding: '1.25rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.5rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                        color: policyPreset === 'CUSTOM' ? '#1d4ed8' : '#1e293b',
+                      }}
+                    >
+                      Custom Corporate Blueprint
+                    </span>
+                    {policyPreset === 'CUSTOM' && (
+                      <span
+                        style={{
+                          backgroundColor: '#2563eb',
+                          color: '#ffffff',
+                          fontSize: '0.7rem',
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '4px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        ACTIVE
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.75rem' }}>
+                    Tailor each parameter directly below. Customize company legal title, statutory
+                    timing per agency, and salary bases.
+                  </p>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: '#475569',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <div>
+                      • Timing: <strong>Custom Agency Matrix</strong>
+                    </div>
+                    <div>
+                      • Salary Basis: <strong>Custom Selection</strong>
+                    </div>
+                    <div>
+                      • Components: <strong>Fully Customizable</strong>
+                    </div>
+                    <div>
+                      • Work Factor: <strong>261 / 313 / 365 Days</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Core Policy Configuration Parameters */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              {/* Card 1: General Organization & Calendar */}
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  padding: '1.5rem',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    marginBottom: '1.25rem',
+                  }}
+                >
+                  <Building size={20} color="#2563eb" />
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                    Company &amp; Work Calendar Settings
+                  </h3>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      Company Legal Name
+                    </label>
+                    <input
+                      value={currentPolicy.companyName}
+                      onChange={(e) => {
+                        setCurrentPolicy({ ...currentPolicy, companyName: e.target.value });
+                        setPolicyPreset('CUSTOM');
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: '#334155',
+                          marginBottom: '0.3rem',
+                        }}
+                      >
+                        Default Pay Cycle
+                      </label>
+                      <select
+                        value={currentPolicy.payCycle}
+                        onChange={(e) => {
+                          setCurrentPolicy({
+                            ...currentPolicy,
+                            payCycle: e.target.value as 'semi_monthly' | 'monthly',
+                          });
+                          setPolicyPreset('CUSTOM');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        <option value="semi_monthly">Semi-Monthly (15th/30th)</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: '#334155',
+                          marginBottom: '0.3rem',
+                        }}
+                      >
+                        Working Days Factor
+                      </label>
+                      <select
+                        value={currentPolicy.workingDaysFactor}
+                        onChange={(e) => {
+                          setCurrentPolicy({
+                            ...currentPolicy,
+                            workingDaysFactor: Number(e.target.value) as 261 | 313 | 365,
+                          });
+                          setPolicyPreset('CUSTOM');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        <option value={261}>261 Days (Mon–Fri Standard)</option>
+                        <option value={313}>313 Days (Mon–Sat 6 Days)</option>
+                        <option value={365}>365 Days (Continuous Retail/Security)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      Annual Bonus Tax-Exempt Ceiling (₱)
+                    </label>
+                    <input
+                      type="number"
+                      value={centavosToPesos(currentPolicy.annualBonusExemptCeilingCentavos)}
+                      onChange={(e) => {
+                        setCurrentPolicy({
+                          ...currentPolicy,
+                          annualBonusExemptCeilingCentavos: pesosToCentavos(Number(e.target.value)),
+                        });
+                        setPolicyPreset('CUSTOM');
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        color: '#64748b',
+                        marginTop: '0.2rem',
+                        display: 'block',
+                      }}
+                    >
+                      BIR Tax Code Sec 32(B)(7)(e) — Standard threshold is ₱90,000.00 per calendar
+                      year.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Statutory Schedules & Basis */}
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  padding: '1.5rem',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    marginBottom: '1.25rem',
+                  }}
+                >
+                  <ShieldCheck size={20} color="#2563eb" />
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                    Statutory Deduction Timing &amp; Salary Basis
+                  </h3>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: '#334155',
+                          marginBottom: '0.3rem',
+                        }}
+                      >
+                        SSS Deduction Timing
+                      </label>
+                      <select
+                        value={currentPolicy.sssTiming}
+                        onChange={(e) => {
+                          setCurrentPolicy({
+                            ...currentPolicy,
+                            sssTiming: e.target.value as DeductionTimingOption,
+                          });
+                          setPolicyPreset('CUSTOM');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        <option value="split_50_50">Split 50% / 50% per Cut-Off</option>
+                        <option value="first_cutoff_only">100% on 1st Cut-Off Only</option>
+                        <option value="second_cutoff_only">100% on 2nd Cut-Off Only</option>
+                        <option value="corporate_tiered">Corporate Tiered Split</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: '#334155',
+                          marginBottom: '0.3rem',
+                        }}
+                      >
+                        PhilHealth Timing
+                      </label>
+                      <select
+                        value={currentPolicy.philhealthTiming}
+                        onChange={(e) => {
+                          setCurrentPolicy({
+                            ...currentPolicy,
+                            philhealthTiming: e.target.value as DeductionTimingOption,
+                          });
+                          setPolicyPreset('CUSTOM');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        <option value="split_50_50">Split 50% / 50% per Cut-Off</option>
+                        <option value="first_cutoff_only">100% on 1st Cut-Off Only</option>
+                        <option value="second_cutoff_only">100% on 2nd Cut-Off Only</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: '#334155',
+                          marginBottom: '0.3rem',
+                        }}
+                      >
+                        Pag-IBIG Timing
+                      </label>
+                      <select
+                        value={currentPolicy.pagibigTiming}
+                        onChange={(e) => {
+                          setCurrentPolicy({
+                            ...currentPolicy,
+                            pagibigTiming: e.target.value as DeductionTimingOption,
+                          });
+                          setPolicyPreset('CUSTOM');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        <option value="split_50_50">Split 50% / 50% (₱100/₱100)</option>
+                        <option value="first_cutoff_only">Full ₱200 on 1st Cut-Off Only</option>
+                        <option value="second_cutoff_only">Full ₱200 on 2nd Cut-Off Only</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: '#334155',
+                          marginBottom: '0.3rem',
+                        }}
+                      >
+                        SSS Salary Basis
+                      </label>
+                      <select
+                        value={currentPolicy.sssSalaryBasis}
+                        onChange={(e) => {
+                          setCurrentPolicy({
+                            ...currentPolicy,
+                            sssSalaryBasis: e.target.value as StatutorySalaryBasis,
+                          });
+                          setPolicyPreset('CUSTOM');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        <option value="basic_salary_only">Basic Salary Only (Standard)</option>
+                        <option value="gross_taxable">Gross Taxable Pay</option>
+                        <option value="total_cash_compensation">
+                          Total Cash Compensation (MNC/BPO)
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      PhilHealth Salary Credit Basis
+                    </label>
+                    <select
+                      value={currentPolicy.philhealthSalaryBasis}
+                      onChange={(e) => {
+                        setCurrentPolicy({
+                          ...currentPolicy,
+                          philhealthSalaryBasis: e.target.value as StatutorySalaryBasis,
+                        });
+                        setPolicyPreset('CUSTOM');
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <option value="basic_salary_only">Basic Salary Only</option>
+                      <option value="gross_taxable">Gross Taxable Pay</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Pay Components & Tax Treatment Manager */}
+            <div
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                padding: '1.5rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '1rem',
+                }}
+              >
+                <div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                    Custom Pay Components &amp; Philippine Tax Treatments
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                    Manage earnings and deductions recognized in payroll runs and their BIR tax
+                    treatment.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAddComponentModal(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '0.55rem 1rem',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={16} /> Add Pay Component
+                </button>
+              </div>
+
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: '0.85rem',
+                  textAlign: 'left',
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderBottom: '1px solid #e2e8f0',
+                      color: '#475569',
+                    }}
+                  >
+                    <th style={{ padding: '0.75rem 1rem' }}>Component Code</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Display Name</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Category</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>BIR Tax Treatment</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentPolicy.components.map((comp) => (
+                    <tr key={comp.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td
+                        style={{
+                          padding: '0.75rem 1rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 600,
+                          color: '#2563eb',
+                        }}
+                      >
+                        {comp.code}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: '#1e293b' }}>
+                        {comp.name}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <span
+                          style={{
+                            backgroundColor: comp.category === 'EARNING' ? '#dcfce7' : '#fee2e2',
+                            color: comp.category === 'EARNING' ? '#15803d' : '#b91c1c',
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {comp.category}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <span
+                          style={{
+                            backgroundColor:
+                              comp.treatment === 'TAXABLE'
+                                ? '#fef3c7'
+                                : comp.treatment === 'NON_TAXABLE_DE_MINIMIS'
+                                  ? '#e0f2fe'
+                                  : comp.treatment === 'BONUS_90K_POOL'
+                                    ? '#f3e8ff'
+                                    : '#f1f5f9',
+                            color:
+                              comp.treatment === 'TAXABLE'
+                                ? '#b45309'
+                                : comp.treatment === 'NON_TAXABLE_DE_MINIMIS'
+                                  ? '#0369a1'
+                                  : comp.treatment === 'BONUS_90K_POOL'
+                                    ? '#6b21a8'
+                                    : '#475569',
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {comp.treatment === 'TAXABLE'
+                            ? 'Taxable Earning (TRAIN Law)'
+                            : comp.treatment === 'NON_TAXABLE_DE_MINIMIS'
+                              ? 'Non-Taxable De Minimis'
+                              : comp.treatment === 'BONUS_90K_POOL'
+                                ? '₱90,000 Annual Bonus Pool'
+                                : comp.treatment === 'PRE_TAX_DEDUCTION'
+                                  ? 'Pre-Tax Deduction'
+                                  : 'Post-Tax Deduction (HMO/Loan)'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        {comp.code !== 'BASIC' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentPolicy({
+                                ...currentPolicy,
+                                components: currentPolicy.components.filter(
+                                  (c) => c.id !== comp.id
+                                ),
+                              });
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              padding: '0.25rem',
+                            }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        ) : (
+                          <span
+                            style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}
+                          >
+                            Core System
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </main>
@@ -3434,6 +4933,239 @@ export default function App() {
                   }}
                 >
                   Save Employee Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CUSTOM PAY COMPONENT MODAL */}
+      {showAddComponentModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              width: '500px',
+              padding: '1.75rem',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1.25rem',
+                borderBottom: '1px solid #e2e8f0',
+                paddingBottom: '0.75rem',
+              }}
+            >
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                Add Custom Pay Component
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddComponentModal(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newCompCode.trim() || !newCompName.trim()) return;
+                const newComponent: CustomPayComponent = {
+                  id: `comp-${Date.now()}`,
+                  code: newCompCode.trim().toUpperCase().replace(/\s+/g, '_'),
+                  name: newCompName.trim(),
+                  category: newCompCategory,
+                  treatment: newCompTreatment,
+                };
+                setCurrentPolicy({
+                  ...currentPolicy,
+                  components: [...currentPolicy.components, newComponent],
+                });
+                setShowAddComponentModal(false);
+                setNewCompCode('');
+                setNewCompName('');
+                setNewCompCategory('EARNING');
+                setNewCompTreatment('TAXABLE');
+              }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+            >
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  Component Code (e.g. COMM_ALLOW, HMO_DEP)
+                </label>
+                <input
+                  required
+                  value={newCompCode}
+                  onChange={(e) => setNewCompCode(e.target.value)}
+                  placeholder="e.g. COMM_ALLOW"
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  Component Display Name
+                </label>
+                <input
+                  required
+                  value={newCompName}
+                  onChange={(e) => setNewCompName(e.target.value)}
+                  placeholder="e.g. Sales Commission Incentive"
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      marginBottom: '0.25rem',
+                    }}
+                  >
+                    Category
+                  </label>
+                  <select
+                    value={newCompCategory}
+                    onChange={(e) => {
+                      const cat = e.target.value as 'EARNING' | 'DEDUCTION';
+                      setNewCompCategory(cat);
+                      if (cat === 'DEDUCTION') {
+                        setNewCompTreatment('POST_TAX_DEDUCTION');
+                      } else {
+                        setNewCompTreatment('TAXABLE');
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  >
+                    <option value="EARNING">EARNING (Pay Addition)</option>
+                    <option value="DEDUCTION">DEDUCTION (Pay Subtraction)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      marginBottom: '0.25rem',
+                    }}
+                  >
+                    Tax Treatment
+                  </label>
+                  <select
+                    value={newCompTreatment}
+                    onChange={(e) => setNewCompTreatment(e.target.value as TaxTreatment)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  >
+                    {newCompCategory === 'EARNING' ? (
+                      <>
+                        <option value="TAXABLE">Taxable Earning (TRAIN Law)</option>
+                        <option value="NON_TAXABLE_DE_MINIMIS">Non-Taxable De Minimis</option>
+                        <option value="BONUS_90K_POOL">₱90,000 Annual Bonus Pool</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="POST_TAX_DEDUCTION">Post-Tax (HMO/Loan/Advance)</option>
+                        <option value="PRE_TAX_DEDUCTION">Pre-Tax Deduction</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '0.75rem',
+                  marginTop: '0.5rem',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowAddComponentModal(false)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '0.5rem 1.25rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  Add Component
                 </button>
               </div>
             </form>

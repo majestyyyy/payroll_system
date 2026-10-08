@@ -974,22 +974,39 @@ export default function App() {
 
               {/* Basic Salary */}
               <div style={{ marginBottom: '1.25rem' }}>
-                <label
+                <div
                   style={{
-                    display: 'block',
-                    fontSize: '0.85rem',
-                    fontWeight: 600,
-                    color: '#334155',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                     marginBottom: '0.4rem',
                   }}
                 >
-                  Monthly Basic Salary: {formatPHP(pesosToCentavos(basicSalaryPesos))}
-                </label>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
+                    Monthly Basic Salary (₱)
+                  </label>
+                  <input
+                    type="number"
+                    min="5000"
+                    step="500"
+                    value={basicSalaryPesos}
+                    onChange={(e) => setBasicSalaryPesos(Number(e.target.value))}
+                    style={{
+                      width: '130px',
+                      padding: '0.35rem 0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontWeight: 700,
+                      fontSize: '0.9rem',
+                      textAlign: 'right',
+                    }}
+                  />
+                </div>
                 <input
                   type="range"
                   min="10000"
                   max="120000"
-                  step="1000"
+                  step="500"
                   value={basicSalaryPesos}
                   onChange={(e) => setBasicSalaryPesos(Number(e.target.value))}
                   style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }}
@@ -1258,11 +1275,12 @@ export default function App() {
                         marginBottom: '0.2rem',
                       }}
                     >
-                      Non-Taxable Allowance (₱)
+                      Fixed De Minimis / Non-Taxable (₱)
                     </label>
                     <input
                       type="number"
                       min="0"
+                      step="0.01"
                       value={nonTaxableAllowancePesos}
                       onChange={(e) => setNonTaxableAllowancePesos(Number(e.target.value))}
                       style={{
@@ -1283,11 +1301,12 @@ export default function App() {
                         marginBottom: '0.2rem',
                       }}
                     >
-                      Taxable Allowance (₱)
+                      Holiday OT / Taxable Earnings (₱)
                     </label>
                     <input
                       type="number"
                       min="0"
+                      step="0.01"
                       value={taxableAllowancePesos}
                       onChange={(e) => setTaxableAllowancePesos(Number(e.target.value))}
                       style={{
@@ -1310,11 +1329,12 @@ export default function App() {
                         marginBottom: '0.2rem',
                       }}
                     >
-                      Loans / Cash Advance (₱)
+                      HMO / Loans / After-Tax Ded. (₱)
                     </label>
                     <input
                       type="number"
                       min="0"
+                      step="0.01"
                       value={otherDeductionsPesos}
                       onChange={(e) => setOtherDeductionsPesos(Number(e.target.value))}
                       style={{

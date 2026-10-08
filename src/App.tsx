@@ -31,6 +31,7 @@ import {
   AttendanceInput,
   PayCycleType,
   GrossToNetResult,
+  TaxStatus,
 } from './index';
 
 interface EmployeeRecord extends Employee {
@@ -180,9 +181,15 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [newFirstName, setNewFirstName] = useState('');
   const [newLastName, setNewLastName] = useState('');
+  const [newEmpNo, setNewEmpNo] = useState('');
   const [newDepartment, setNewDepartment] = useState('Operations');
   const [newPosition, setNewPosition] = useState('Associate');
   const [newSalary, setNewSalary] = useState(25000);
+  const [newTaxStatus, setNewTaxStatus] = useState<TaxStatus>('SINGLE');
+  const [newTin, setNewTin] = useState('');
+  const [newSss, setNewSss] = useState('');
+  const [newPhilhealth, setNewPhilhealth] = useState('');
+  const [newPagibig, setNewPagibig] = useState('');
 
   // Backups State
   const [backups, setBackups] = useState<
@@ -356,25 +363,33 @@ export default function App() {
 
     const newEmp: EmployeeRecord = {
       id: `emp-${Date.now()}`,
-      employeeNo: `EMP-2026-${String(employees.length + 1).padStart(3, '0')}`,
-      firstName: newFirstName,
-      lastName: newLastName,
-      department: newDepartment,
-      position: newPosition,
+      employeeNo: newEmpNo.trim() || `EMP-2026-${String(employees.length + 1).padStart(3, '0')}`,
+      firstName: newFirstName.trim(),
+      lastName: newLastName.trim(),
+      department: newDepartment.trim() || 'General',
+      position: newPosition.trim() || 'Staff',
       basicSalaryMonthlyCentavos: pesosToCentavos(newSalary),
       employmentType: 'regular',
-      taxStatus: 'SINGLE',
-      tin: '000-000-000-000',
-      sssNumber: '00-0000000-0',
-      philhealthNumber: '00-000000000-0',
-      pagibigNumber: '0000-0000-0000',
+      taxStatus: newTaxStatus,
+      tin: newTin.trim() || '000-000-000-000',
+      sssNumber: newSss.trim() || '00-0000000-0',
+      philhealthNumber: newPhilhealth.trim() || '00-000000000-0',
+      pagibigNumber: newPagibig.trim() || '0000-0000-0000',
     };
 
     setEmployees([...employees, newEmp]);
     setShowAddModal(false);
     setNewFirstName('');
     setNewLastName('');
+    setNewEmpNo('');
+    setNewDepartment('Operations');
+    setNewPosition('Associate');
     setNewSalary(25000);
+    setNewTaxStatus('SINGLE');
+    setNewTin('');
+    setNewSss('');
+    setNewPhilhealth('');
+    setNewPagibig('');
   };
 
   return (
@@ -2986,25 +3001,367 @@ export default function App() {
           <div
             style={{
               backgroundColor: '#ffffff',
-              borderRadius: '10px',
+              borderRadius: '12px',
               padding: '1.75rem',
-              width: '460px',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+              width: '580px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.15)',
             }}
           >
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
-              Add New Employee
-            </h3>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1.25rem',
+                borderBottom: '1px solid #e2e8f0',
+                paddingBottom: '0.75rem',
+              }}
+            >
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                  Add New Employee Profile
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  Register employee compensation, BIR tax status, and Philippine statutory numbers.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
 
             <form onSubmit={handleCreateEmployee}>
+              {/* Basic Info Section */}
+              <div style={{ marginBottom: '1rem' }}>
+                <span
+                  style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: '#2563eb',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  Personal &amp; Employment Details
+                </span>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.75rem',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      First Name *
+                    </label>
+                    <input
+                      required
+                      placeholder="e.g. John Lloyd"
+                      value={newFirstName}
+                      onChange={(e) => setNewFirstName(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      Last Name *
+                    </label>
+                    <input
+                      required
+                      placeholder="e.g. Parungao"
+                      value={newLastName}
+                      onChange={(e) => setNewLastName(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.75rem',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      Employee ID / Number
+                    </label>
+                    <input
+                      placeholder="e.g. 14222356"
+                      value={newEmpNo}
+                      onChange={(e) => setNewEmpNo(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      Monthly Basic Salary (₱) *
+                    </label>
+                    <input
+                      type="number"
+                      min="5000"
+                      step="500"
+                      required
+                      value={newSalary}
+                      onChange={(e) => setNewSalary(Number(e.target.value))}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      Department
+                    </label>
+                    <input
+                      placeholder="e.g. Technology / Operations"
+                      value={newDepartment}
+                      onChange={(e) => setNewDepartment(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      Position / Role
+                    </label>
+                    <input
+                      placeholder="e.g. Associate Software Engineer"
+                      value={newPosition}
+                      onChange={(e) => setNewPosition(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Philippine Tax & Statutory Details Section */}
               <div
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '0.75rem',
-                  marginBottom: '0.75rem',
+                  marginBottom: '1.25rem',
+                  backgroundColor: '#f8fafc',
+                  padding: '0.85rem',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
                 }}
               >
+                <span
+                  style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  🏛️ Philippine Tax &amp; Statutory Numbers
+                </span>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.75rem',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      BIR Tax Status
+                    </label>
+                    <select
+                      value={newTaxStatus}
+                      onChange={(e) => setNewTaxStatus(e.target.value as TaxStatus)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      <option value="SINGLE">Single / Zero Exemption</option>
+                      <option value="MARRIED">Married / Head of Family</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      TIN Number
+                    </label>
+                    <input
+                      placeholder="e.g. 123-456-789-000"
+                      value={newTin}
+                      onChange={(e) => setNewTin(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.75rem',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      SSS Number
+                    </label>
+                    <input
+                      placeholder="e.g. 01-2345678-9"
+                      value={newSss}
+                      onChange={(e) => setNewSss(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        marginBottom: '0.2rem',
+                      }}
+                    >
+                      PhilHealth Number
+                    </label>
+                    <input
+                      placeholder="e.g. 12-345678901-2"
+                      value={newPhilhealth}
+                      onChange={(e) => setNewPhilhealth(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label
                     style={{
@@ -3014,12 +3371,12 @@ export default function App() {
                       marginBottom: '0.2rem',
                     }}
                   >
-                    First Name
+                    Pag-IBIG (HDMF) Number
                   </label>
                   <input
-                    required
-                    value={newFirstName}
-                    onChange={(e) => setNewFirstName(e.target.value)}
+                    placeholder="e.g. 1234-5678-9012"
+                    value={newPagibig}
+                    onChange={(e) => setNewPagibig(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '0.45rem',
@@ -3028,101 +3385,6 @@ export default function App() {
                     }}
                   />
                 </div>
-                <div>
-                  <label
-                    style={{
-                      display: 'block',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      marginBottom: '0.2rem',
-                    }}
-                  >
-                    Last Name
-                  </label>
-                  <input
-                    required
-                    value={newLastName}
-                    onChange={(e) => setNewLastName(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.45rem',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    marginBottom: '0.2rem',
-                  }}
-                >
-                  Department
-                </label>
-                <input
-                  value={newDepartment}
-                  onChange={(e) => setNewDepartment(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.45rem',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    marginBottom: '0.2rem',
-                  }}
-                >
-                  Position
-                </label>
-                <input
-                  value={newPosition}
-                  onChange={(e) => setNewPosition(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.45rem',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    marginBottom: '0.2rem',
-                  }}
-                >
-                  Monthly Salary (₱)
-                </label>
-                <input
-                  type="number"
-                  min="10000"
-                  step="1000"
-                  value={newSalary}
-                  onChange={(e) => setNewSalary(Number(e.target.value))}
-                  style={{
-                    width: '100%',
-                    padding: '0.45rem',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                  }}
-                />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
@@ -3130,7 +3392,7 @@ export default function App() {
                   type="button"
                   onClick={() => setShowAddModal(false)}
                   style={{
-                    padding: '0.5rem 1rem',
+                    padding: '0.55rem 1.1rem',
                     borderRadius: '6px',
                     border: '1px solid #cbd5e1',
                     background: '#ffffff',
@@ -3142,7 +3404,7 @@ export default function App() {
                 <button
                   type="submit"
                   style={{
-                    padding: '0.5rem 1.25rem',
+                    padding: '0.55rem 1.5rem',
                     borderRadius: '6px',
                     border: 'none',
                     background: '#2563eb',
@@ -3151,7 +3413,7 @@ export default function App() {
                     fontSize: '0.85rem',
                   }}
                 >
-                  Save Employee
+                  Save Employee Profile
                 </button>
               </div>
             </form>

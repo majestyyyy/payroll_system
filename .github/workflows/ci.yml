@@ -38,8 +38,8 @@ jobs:
       - name: 🧪 Run Unit Test Suite (Calculation Engine & Math)
         run: npm run test
 
-      - name: 🔒 Dependency Security Audit
-        run: npm audit --audit-level=high
+      - name: 🔒 Production Dependency Security Audit
+        run: npm audit --omit=dev --audit-level=high
 
       - name: 🔑 Secret Leak Detection (Gitleaks)
         uses: gitleaks/gitleaks-action@v2

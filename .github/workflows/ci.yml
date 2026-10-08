@@ -1,0 +1,48 @@
+name: CI/CD Pipeline - Code Quality, Security & Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  code-quality-and-tests:
+    name: Lint, Typecheck, Security & Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⚙️ Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🎨 Verify Code Formatting (Prettier)
+        run: npm run format:check
+
+      - name: 🔍 Static Code Analysis & Linting (ESLint)
+        run: npm run lint
+
+      - name: 🛡️ Strict TypeScript Type Check
+        run: npm run typecheck
+
+      - name: 🧪 Run Unit Test Suite (Calculation Engine & Math)
+        run: npm run test
+
+      - name: 🔒 Dependency Security Audit
+        run: npm audit --audit-level=high
+
+      - name: 🔑 Secret Leak Detection (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: false

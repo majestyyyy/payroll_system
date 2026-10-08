@@ -9,9 +9,14 @@ import {
   RefreshCw,
   Clock,
   Briefcase,
-  AlertCircle,
   FileText,
   Download,
+  PlayCircle,
+  Printer,
+  CheckCircle2,
+  Lock,
+  X,
+  ChevronRight,
 } from 'lucide-react';
 import {
   computeGrossToNet,
@@ -25,11 +30,37 @@ import {
   Employee,
   AttendanceInput,
   PayCycleType,
+  GrossToNetResult,
 } from './index';
 
 interface EmployeeRecord extends Employee {
   department: string;
   position: string;
+}
+
+interface PayrollRunRecord {
+  id: string;
+  periodName: string;
+  cycleType: PayCycleType;
+  startDate: string;
+  endDate: string;
+  status: 'DRAFT' | 'COMPUTED' | 'LOCKED';
+  processedAt: string;
+  items: Array<{
+    employee: EmployeeRecord;
+    attendance: AttendanceInput;
+    result: GrossToNetResult;
+  }>;
+  totals: {
+    grossCentavos: number;
+    deductionsCentavos: number;
+    netCentavos: number;
+    taxCentavos: number;
+    sssEeCentavos: number;
+    philhealthEeCentavos: number;
+    pagibigEeCentavos: number;
+    employerCostCentavos: number;
+  };
 }
 
 const INITIAL_EMPLOYEES: EmployeeRecord[] = [
@@ -57,7 +88,7 @@ const INITIAL_EMPLOYEES: EmployeeRecord[] = [
     email: 'maria.santos@company.ph',
     department: 'Human Resources',
     position: 'HR & Payroll Specialist',
-    basicSalaryMonthlyCentavos: pesosToCentavos(30000),
+    basicSalaryMonthlyCentavos: pesosToCentavos(32000),
     employmentType: 'regular',
     taxStatus: 'MARRIED',
     tin: '987-654-321-000',
@@ -73,7 +104,7 @@ const INITIAL_EMPLOYEES: EmployeeRecord[] = [
     email: 'roberto.garcia@company.ph',
     department: 'Operations',
     position: 'Logistics Supervisor',
-    basicSalaryMonthlyCentavos: pesosToCentavos(25000),
+    basicSalaryMonthlyCentavos: pesosToCentavos(26000),
     employmentType: 'regular',
     taxStatus: 'SINGLE',
     tin: '456-789-012-000',
@@ -81,15 +112,33 @@ const INITIAL_EMPLOYEES: EmployeeRecord[] = [
     philhealthNumber: '34-567890123-4',
     pagibigNumber: '3456-7890-1234',
   },
+  {
+    id: 'emp-004',
+    employeeNo: 'EMP-2026-004',
+    firstName: 'Angela',
+    lastName: 'Reyes',
+    email: 'angela.reyes@company.ph',
+    department: 'Finance',
+    position: 'Senior Accountant',
+    basicSalaryMonthlyCentavos: pesosToCentavos(40000),
+    employmentType: 'regular',
+    taxStatus: 'SINGLE',
+    tin: '321-654-987-000',
+    sssNumber: '04-1234567-8',
+    philhealthNumber: '45-678901234-5',
+    pagibigNumber: '4567-8901-2345',
+  },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'calc' | 'employees' | 'statutory' | 'backup'>('calc');
+  const [activeTab, setActiveTab] = useState<
+    'runs' | 'calc' | 'employees' | 'statutory' | 'backup'
+  >('runs');
   const [employees, setEmployees] = useState<EmployeeRecord[]>(INITIAL_EMPLOYEES);
 
-  // Calculator State
+  // Single Calculator State
   const [basicSalaryPesos, setBasicSalaryPesos] = useState<number>(30000);
-  const [cycleType, setCycleType] = useState<PayCycleType>('semi_monthly');
+  const [calcCycleType, setCalcCycleType] = useState<PayCycleType>('semi_monthly');
   const [workingDaysFactor, setWorkingDaysFactor] = useState<261 | 313>(261);
   const [otHours, setOtHours] = useState<number>(4);
   const [nightDiffHours, setNightDiffHours] = useState<number>(0);
@@ -100,7 +149,34 @@ export default function App() {
   const [otherDeductionsPesos, setOtherDeductionsPesos] = useState<number>(0);
   const [voluntaryPagIbigPesos, setVoluntaryPagIbigPesos] = useState<number>(0);
 
-  // New Employee Form State
+  // Batch Payroll Run Wizard State
+  const [payrollRuns, setPayrollRuns] = useState<PayrollRunRecord[]>([]);
+  const [activeRun, setActiveRun] = useState<PayrollRunRecord | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [wizardPeriodName, setWizardPeriodName] = useState('October 1 - 15, 2026 (1st Cut-Off)');
+  const [wizardCycleType, setWizardCycleType] = useState<PayCycleType>('semi_monthly');
+  const [wizardStartDate, setWizardStartDate] = useState('2026-10-01');
+  const [wizardEndDate, setWizardEndDate] = useState('2026-10-15');
+
+  // Interactive Attendance Grid Inputs per Employee
+  const [attendanceInputs, setAttendanceInputs] = useState<
+    Record<string, { ot: number; late: number; absent: number; allowance: number; loan: number }>
+  >({
+    'emp-001': { ot: 5, late: 0, absent: 0, allowance: 1000, loan: 0 },
+    'emp-002': { ot: 2, late: 15, absent: 0, allowance: 1000, loan: 0 },
+    'emp-003': { ot: 8, late: 30, absent: 1, allowance: 500, loan: 1000 },
+    'emp-004': { ot: 0, late: 0, absent: 0, allowance: 1000, loan: 0 },
+  });
+
+  // Modal Payslip Preview State
+  const [selectedPayslip, setSelectedPayslip] = useState<{
+    employee: EmployeeRecord;
+    result: GrossToNetResult;
+    periodName: string;
+  } | null>(null);
+
+  // Employee Add Modal State
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [newFirstName, setNewFirstName] = useState('');
   const [newLastName, setNewLastName] = useState('');
@@ -108,7 +184,7 @@ export default function App() {
   const [newPosition, setNewPosition] = useState('Associate');
   const [newSalary, setNewSalary] = useState(25000);
 
-  // Backup State
+  // Backups State
   const [backups, setBackups] = useState<
     Array<{ id: string; filename: string; date: string; size: string }>
   >([
@@ -127,7 +203,7 @@ export default function App() {
   ]);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
 
-  // Compute live calculation
+  // Live Single Calculation
   const calculationResult = useMemo(() => {
     const mockEmployee: Employee = {
       id: 'sim-emp',
@@ -141,7 +217,7 @@ export default function App() {
 
     const mockAttendance: AttendanceInput = {
       employeeId: 'sim-emp',
-      daysWorked: cycleType === 'semi_monthly' ? 11 : 22,
+      daysWorked: calcCycleType === 'semi_monthly' ? 11 : 22,
       daysAbsent: absentDays,
       tardinessMinutes: tardinessMins,
       undertimeMinutes: 0,
@@ -152,7 +228,7 @@ export default function App() {
     };
 
     return computeGrossToNet(mockEmployee, mockAttendance, {
-      cycleType,
+      cycleType: calcCycleType,
       statutoryTiming: 'split_equally',
       nonTaxableAllowancesCentavos: pesosToCentavos(nonTaxableAllowancePesos),
       taxableAllowancesCentavos: pesosToCentavos(taxableAllowancePesos),
@@ -161,7 +237,7 @@ export default function App() {
     });
   }, [
     basicSalaryPesos,
-    cycleType,
+    calcCycleType,
     otHours,
     nightDiffHours,
     tardinessMins,
@@ -175,9 +251,103 @@ export default function App() {
   const dailyRateCentavos = deriveDailyRate(pesosToCentavos(basicSalaryPesos), workingDaysFactor);
   const hourlyRateCentavos = deriveHourlyRate(dailyRateCentavos, 8);
 
-  const handleSimulateEmployee = (emp: EmployeeRecord) => {
-    setBasicSalaryPesos(centavosToPesos(emp.basicSalaryMonthlyCentavos));
-    setActiveTab('calc');
+  // Process Batch Payroll Run
+  const handleProcessBatchRun = () => {
+    let totalGross = 0;
+    let totalDeductions = 0;
+    let totalNet = 0;
+    let totalTax = 0;
+    let totalSss = 0;
+    let totalPh = 0;
+    let totalPagibig = 0;
+    let totalErCost = 0;
+
+    const items = employees.map((emp) => {
+      const inputs = attendanceInputs[emp.id] || {
+        ot: 0,
+        late: 0,
+        absent: 0,
+        allowance: 0,
+        loan: 0,
+      };
+      const att: AttendanceInput = {
+        employeeId: emp.id,
+        daysWorked: wizardCycleType === 'semi_monthly' ? 11 - inputs.absent : 22 - inputs.absent,
+        daysAbsent: inputs.absent,
+        tardinessMinutes: inputs.late,
+        undertimeMinutes: 0,
+        regularOvertimeHours: inputs.ot,
+        restDayHours: 0,
+        nightDifferentialHours: 0,
+        holidayHours: 0,
+      };
+
+      const result = computeGrossToNet(emp, att, {
+        cycleType: wizardCycleType,
+        statutoryTiming: 'split_equally',
+        nonTaxableAllowancesCentavos: pesosToCentavos(inputs.allowance),
+        otherDeductionsCentavos: pesosToCentavos(inputs.loan),
+      });
+
+      totalGross += result.grossPayCentavos;
+      totalDeductions += result.totalDeductionsCentavos;
+      totalNet += result.netPayCentavos;
+      totalTax += result.withholdingTaxCentavos;
+      totalSss += result.sssEeCentavos;
+      totalPh += result.philhealthEeCentavos;
+      totalPagibig += result.pagibigEeCentavos;
+      totalErCost += result.totalCostToEmployerCentavos;
+
+      return { employee: emp, attendance: att, result };
+    });
+
+    const newRun: PayrollRunRecord = {
+      id: `run-${Date.now()}`,
+      periodName: wizardPeriodName,
+      cycleType: wizardCycleType,
+      startDate: wizardStartDate,
+      endDate: wizardEndDate,
+      status: 'COMPUTED',
+      processedAt: new Date().toLocaleString(),
+      items,
+      totals: {
+        grossCentavos: totalGross,
+        deductionsCentavos: totalDeductions,
+        netCentavos: totalNet,
+        taxCentavos: totalTax,
+        sssEeCentavos: totalSss,
+        philhealthEeCentavos: totalPh,
+        pagibigEeCentavos: totalPagibig,
+        employerCostCentavos: totalErCost,
+      },
+    };
+
+    setPayrollRuns([newRun, ...payrollRuns]);
+    setActiveRun(newRun);
+    setShowWizard(false);
+    setWizardStep(1);
+  };
+
+  const handleLockRun = (runId: string) => {
+    setPayrollRuns(
+      payrollRuns.map((r) => (r.id === runId ? { ...r, status: 'LOCKED' as const } : r))
+    );
+    if (activeRun && activeRun.id === runId) {
+      setActiveRun({ ...activeRun, status: 'LOCKED' });
+    }
+    // Auto-trigger Google Drive backup
+    const timestamp = new Date().toISOString().replace(/T/, '_').slice(0, 19);
+    setBackups([
+      {
+        id: `bak-${Date.now()}`,
+        filename: `payroll_run_${runId}_${timestamp}.payrollbak`,
+        date: new Date().toLocaleString(),
+        size: '15.1 MB',
+      },
+      ...backups,
+    ]);
+    setBackupMessage(`Payroll Run locked! Encrypted snapshot auto-synced to Google Drive.`);
+    setTimeout(() => setBackupMessage(null), 6000);
   };
 
   const handleCreateEmployee = (e: React.FormEvent) => {
@@ -207,23 +377,11 @@ export default function App() {
     setNewSalary(25000);
   };
 
-  const handleTriggerBackup = () => {
-    const timestamp = new Date().toISOString().replace(/T/, '_').slice(0, 19);
-    const newBak = {
-      id: `bak-${Date.now()}`,
-      filename: `payroll_backup_${timestamp}.payrollbak`,
-      date: new Date().toLocaleString(),
-      size: '14.8 MB',
-    };
-    setBackups([newBak, ...backups]);
-    setBackupMessage(`Successfully synced encrypted backup "${newBak.filename}" to Google Drive!`);
-    setTimeout(() => setBackupMessage(null), 5000);
-  };
-
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Top Application Bar */}
       <header
+        className="no-print"
         style={{
           backgroundColor: '#1e293b',
           color: '#ffffff',
@@ -248,10 +406,10 @@ export default function App() {
           </div>
           <div>
             <h1 style={{ fontSize: '1.15rem', fontWeight: 700, letterSpacing: '-0.02em' }}>
-              Philippine Payroll System
+              Acme Philippines Corp. • Payroll Enterprise
             </h1>
             <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-              Enterprise Desktop Edition • Multi-Tenant &amp; Statutory Compliant
+              Multi-Tenant &amp; Philippine Statutory Compliant Desktop System
             </p>
           </div>
         </div>
@@ -293,6 +451,7 @@ export default function App() {
 
       {/* Navigation Tabs */}
       <div
+        className="no-print"
         style={{
           backgroundColor: '#ffffff',
           borderBottom: '1px solid #e2e8f0',
@@ -301,6 +460,25 @@ export default function App() {
           gap: '1.5rem',
         }}
       >
+        <button
+          onClick={() => setActiveTab('runs')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.9rem 0.25rem',
+            border: 'none',
+            background: 'none',
+            borderBottom: activeTab === 'runs' ? '3px solid #2563eb' : '3px solid transparent',
+            color: activeTab === 'runs' ? '#2563eb' : '#64748b',
+            fontWeight: activeTab === 'runs' ? 600 : 500,
+            fontSize: '0.9rem',
+          }}
+        >
+          <PlayCircle size={18} />
+          Payroll Runs &amp; Processing
+        </button>
+
         <button
           onClick={() => setActiveTab('calc')}
           style={{
@@ -317,7 +495,7 @@ export default function App() {
           }}
         >
           <Calculator size={18} />
-          Live Calculator &amp; Payslip
+          Live Calculator &amp; Simulator
         </button>
 
         <button
@@ -380,9 +558,381 @@ export default function App() {
 
       {/* Main Content Area */}
       <main
+        className="no-print"
         style={{ flex: 1, padding: '1.75rem', maxWidth: '1400px', width: '100%', margin: '0 auto' }}
       >
-        {/* TAB 1: LIVE CALCULATOR */}
+        {/* TAB: PAYROLL RUNS & PROCESSING */}
+        {activeTab === 'runs' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Action Bar */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+                  Payroll Cut-Off Management
+                </h2>
+                <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                  Manage semi-monthly cut-offs, batch timekeeping adjustments, and generate
+                  printable payslips.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowWizard(true);
+                  setWizardStep(1);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '0.65rem 1.25rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                }}
+              >
+                <Plus size={16} /> New Payroll Run
+              </button>
+            </div>
+
+            {backupMessage && (
+              <div
+                style={{
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  color: '#166534',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <CheckCircle2 size={16} />
+                {backupMessage}
+              </div>
+            )}
+
+            {/* Active Run Executive Card (If computed) */}
+            {activeRun ? (
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  padding: '1.5rem',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '1.25rem',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                        {activeRun.periodName}
+                      </h3>
+                      <span
+                        style={{
+                          backgroundColor: activeRun.status === 'LOCKED' ? '#f1f5f9' : '#dbeafe',
+                          color: activeRun.status === 'LOCKED' ? '#475569' : '#1e40af',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '12px',
+                        }}
+                      >
+                        {activeRun.status}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                      Processed on {activeRun.processedAt} • {activeRun.items.length} Employees
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    {activeRun.status !== 'LOCKED' && (
+                      <button
+                        onClick={() => handleLockRun(activeRun.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          padding: '0.5rem 1rem',
+                          backgroundColor: '#0f172a',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <Lock size={14} /> Lock &amp; Auto-Backup
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Company-Wide KPI Stats */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '1rem',
+                    marginBottom: '1.5rem',
+                  }}
+                >
+                  <div
+                    style={{
+                      backgroundColor: '#eff6ff',
+                      padding: '1rem',
+                      borderRadius: '8px',
+                      border: '1px solid #bfdbfe',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', color: '#1e40af', fontWeight: 600 }}>
+                      TOTAL NET DISBURSED
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '1.5rem',
+                        fontWeight: 800,
+                        color: '#1e3a8a',
+                        marginTop: '0.2rem',
+                      }}
+                    >
+                      {formatPHP(activeRun.totals.netCentavos)}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      padding: '1rem',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 600 }}>
+                      TOTAL GROSS SALARIES
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '1.5rem',
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        marginTop: '0.2rem',
+                      }}
+                    >
+                      {formatPHP(activeRun.totals.grossCentavos)}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      backgroundColor: '#fef2f2',
+                      padding: '1rem',
+                      borderRadius: '8px',
+                      border: '1px solid #fecaca',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: 600 }}>
+                      BIR TAX WITHHELD
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '1.5rem',
+                        fontWeight: 800,
+                        color: '#b91c1c',
+                        marginTop: '0.2rem',
+                      }}
+                    >
+                      {formatPHP(activeRun.totals.taxCentavos)}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      backgroundColor: '#f0fdf4',
+                      padding: '1rem',
+                      borderRadius: '8px',
+                      border: '1px solid #bbf7d0',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', color: '#166534', fontWeight: 600 }}>
+                      TOTAL COMPANY COST
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '1.5rem',
+                        fontWeight: 800,
+                        color: '#14532d',
+                        marginTop: '0.2rem',
+                      }}
+                    >
+                      {formatPHP(activeRun.totals.employerCostCentavos)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Employee Payslip Breakdown Table */}
+                <h4
+                  style={{
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    color: '#1e293b',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  Employee Payslip Roster ({activeRun.items.length})
+                </h4>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    textAlign: 'left',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <thead>
+                    <tr
+                      style={{
+                        backgroundColor: '#f8fafc',
+                        borderBottom: '1px solid #e2e8f0',
+                        color: '#475569',
+                      }}
+                    >
+                      <th style={{ padding: '0.65rem 0.85rem' }}>Employee</th>
+                      <th style={{ padding: '0.65rem 0.85rem' }}>Gross Pay</th>
+                      <th style={{ padding: '0.65rem 0.85rem' }}>SSS (EE)</th>
+                      <th style={{ padding: '0.65rem 0.85rem' }}>PhilHealth</th>
+                      <th style={{ padding: '0.65rem 0.85rem' }}>Pag-IBIG</th>
+                      <th style={{ padding: '0.65rem 0.85rem' }}>BIR Tax</th>
+                      <th style={{ padding: '0.65rem 0.85rem' }}>Net Take-Home</th>
+                      <th style={{ padding: '0.65rem 0.85rem' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeRun.items.map(({ employee, result }) => (
+                      <tr key={employee.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '0.75rem 0.85rem' }}>
+                          <div style={{ fontWeight: 600, color: '#0f172a' }}>
+                            {employee.firstName} {employee.lastName}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {employee.employeeNo} • {employee.position}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem', fontWeight: 600 }}>
+                          {formatPHP(result.grossPayCentavos)}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem', color: '#475569' }}>
+                          {formatPHP(result.sssEeCentavos)}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem', color: '#475569' }}>
+                          {formatPHP(result.philhealthEeCentavos)}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem', color: '#475569' }}>
+                          {formatPHP(result.pagibigEeCentavos)}
+                        </td>
+                        <td
+                          style={{ padding: '0.75rem 0.85rem', color: '#b91c1c', fontWeight: 600 }}
+                        >
+                          {formatPHP(result.withholdingTaxCentavos)}
+                        </td>
+                        <td
+                          style={{ padding: '0.75rem 0.85rem', fontWeight: 700, color: '#15803d' }}
+                        >
+                          {formatPHP(result.netPayCentavos)}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem' }}>
+                          <button
+                            onClick={() =>
+                              setSelectedPayslip({
+                                employee,
+                                result,
+                                periodName: activeRun.periodName,
+                              })
+                            }
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              padding: '0.35rem 0.75rem',
+                              backgroundColor: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              color: '#1d4ed8',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            <Printer size={13} /> View Payslip
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* Empty state if no run computed yet */
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px dashed #cbd5e1',
+                  padding: '3.5rem 2rem',
+                  textAlign: 'center',
+                }}
+              >
+                <PlayCircle size={48} color="#94a3b8" style={{ margin: '0 auto 1rem' }} />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>
+                  No Active Payroll Run Open
+                </h3>
+                <p
+                  style={{
+                    fontSize: '0.85rem',
+                    color: '#64748b',
+                    maxWidth: '460px',
+                    margin: '0.5rem auto 1.5rem',
+                  }}
+                >
+                  Click below to launch the Payroll Run Wizard, enter attendance adjustments, and
+                  process batch payslips for all {employees.length} employees.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowWizard(true);
+                    setWizardStep(1);
+                  }}
+                  style={{
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '0.65rem 1.5rem',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Start New Payroll Run
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: LIVE CALCULATOR (Unchanged) */}
         {activeTab === 'calc' && (
           <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '1.75rem' }}>
             {/* Input Controls Panel */}
@@ -465,8 +1015,8 @@ export default function App() {
                     Pay Cycle
                   </label>
                   <select
-                    value={cycleType}
-                    onChange={(e) => setCycleType(e.target.value as PayCycleType)}
+                    value={calcCycleType}
+                    onChange={(e) => setCalcCycleType(e.target.value as PayCycleType)}
                     style={{
                       width: '100%',
                       padding: '0.5rem',
@@ -534,7 +1084,7 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Attendance Adjustments (No Biometrics Required) */}
+              {/* Attendance Adjustments */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <h3
                   style={{
@@ -791,7 +1341,6 @@ export default function App() {
 
             {/* Payslip & Computation Breakdown */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {/* Highlight Hero Card */}
               <div
                 style={{
                   background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
@@ -813,7 +1362,8 @@ export default function App() {
                       color: '#bfdbfe',
                     }}
                   >
-                    Net Take-Home Pay ({cycleType === 'semi_monthly' ? 'Semi-Monthly' : 'Monthly'})
+                    Net Take-Home Pay (
+                    {calcCycleType === 'semi_monthly' ? 'Semi-Monthly' : 'Monthly'})
                   </span>
                   <div style={{ fontSize: '2.5rem', fontWeight: 800, marginTop: '0.2rem' }}>
                     {formatPHP(calculationResult.netPayCentavos)}
@@ -846,7 +1396,6 @@ export default function App() {
 
               {/* Three Column Breakdown */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.25rem' }}>
-                {/* 1. Earnings Column */}
                 <div
                   style={{
                     backgroundColor: '#ffffff',
@@ -913,7 +1462,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 2. Employee Deductions Column */}
                 <div
                   style={{
                     backgroundColor: '#ffffff',
@@ -986,7 +1534,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 3. Employer Cost Column */}
                 <div
                   style={{
                     backgroundColor: '#ffffff',
@@ -1055,7 +1602,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: EMPLOYEE DIRECTORY */}
+        {/* TAB: EMPLOYEE DIRECTORY */}
         {activeTab === 'employees' && (
           <div
             style={{
@@ -1103,7 +1650,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* Employee Table */}
             <table
               style={{
                 width: '100%',
@@ -1170,7 +1716,10 @@ export default function App() {
                     </td>
                     <td style={{ padding: '0.85rem 1rem' }}>
                       <button
-                        onClick={() => handleSimulateEmployee(emp)}
+                        onClick={() => {
+                          setBasicSalaryPesos(centavosToPesos(emp.basicSalaryMonthlyCentavos));
+                          setActiveTab('calc');
+                        }}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -1191,205 +1740,12 @@ export default function App() {
                 ))}
               </tbody>
             </table>
-
-            {/* Add Employee Modal */}
-            {showAddModal && (
-              <div
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  backgroundColor: 'rgba(0,0,0,0.5)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  zIndex: 50,
-                }}
-              >
-                <div
-                  style={{
-                    backgroundColor: '#ffffff',
-                    borderRadius: '10px',
-                    padding: '1.75rem',
-                    width: '460px',
-                    boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
-                  }}
-                >
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
-                    Add New Employee
-                  </h3>
-
-                  <form onSubmit={handleCreateEmployee}>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: '0.75rem',
-                        marginBottom: '0.75rem',
-                      }}
-                    >
-                      <div>
-                        <label
-                          style={{
-                            display: 'block',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            marginBottom: '0.2rem',
-                          }}
-                        >
-                          First Name
-                        </label>
-                        <input
-                          required
-                          value={newFirstName}
-                          onChange={(e) => setNewFirstName(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '0.45rem',
-                            borderRadius: '6px',
-                            border: '1px solid #cbd5e1',
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label
-                          style={{
-                            display: 'block',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            marginBottom: '0.2rem',
-                          }}
-                        >
-                          Last Name
-                        </label>
-                        <input
-                          required
-                          value={newLastName}
-                          onChange={(e) => setNewLastName(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '0.45rem',
-                            borderRadius: '6px',
-                            border: '1px solid #cbd5e1',
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label
-                        style={{
-                          display: 'block',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          marginBottom: '0.2rem',
-                        }}
-                      >
-                        Department
-                      </label>
-                      <input
-                        value={newDepartment}
-                        onChange={(e) => setNewDepartment(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '0.45rem',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label
-                        style={{
-                          display: 'block',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          marginBottom: '0.2rem',
-                        }}
-                      >
-                        Position
-                      </label>
-                      <input
-                        value={newPosition}
-                        onChange={(e) => setNewPosition(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '0.45rem',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ marginBottom: '1.25rem' }}>
-                      <label
-                        style={{
-                          display: 'block',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          marginBottom: '0.2rem',
-                        }}
-                      >
-                        Monthly Salary (₱)
-                      </label>
-                      <input
-                        type="number"
-                        min="10000"
-                        step="1000"
-                        value={newSalary}
-                        onChange={(e) => setNewSalary(Number(e.target.value))}
-                        style={{
-                          width: '100%',
-                          padding: '0.45rem',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddModal(false)}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                          background: '#ffffff',
-                          fontSize: '0.85rem',
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        style={{
-                          padding: '0.5rem 1.25rem',
-                          borderRadius: '6px',
-                          border: 'none',
-                          background: '#2563eb',
-                          color: '#ffffff',
-                          fontWeight: 600,
-                          fontSize: '0.85rem',
-                        }}
-                      >
-                        Save Employee
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* TAB 3: STATUTORY TABLES */}
+        {/* TAB: STATUTORY TABLES */}
         {activeTab === 'statutory' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {/* TRAIN Law Table */}
             <div
               style={{
                 backgroundColor: '#ffffff',
@@ -1491,7 +1847,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* SSS, PhilHealth, Pag-IBIG Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.25rem' }}>
               <div
                 style={{
@@ -1601,7 +1956,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: GOOGLE DRIVE BACKUPS */}
+        {/* TAB: GOOGLE DRIVE BACKUPS */}
         {activeTab === 'backup' && (
           <div
             style={{
@@ -1631,7 +1986,20 @@ export default function App() {
               </div>
 
               <button
-                onClick={handleTriggerBackup}
+                onClick={() => {
+                  const timestamp = new Date().toISOString().replace(/T/, '_').slice(0, 19);
+                  const newBak = {
+                    id: `bak-${Date.now()}`,
+                    filename: `manual_backup_${timestamp}.payrollbak`,
+                    date: new Date().toLocaleString(),
+                    size: '14.8 MB',
+                  };
+                  setBackups([newBak, ...backups]);
+                  setBackupMessage(
+                    `Successfully synced encrypted backup "${newBak.filename}" to Google Drive!`
+                  );
+                  setTimeout(() => setBackupMessage(null), 5000);
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1648,26 +2016,6 @@ export default function App() {
                 <RefreshCw size={16} /> Backup Now to Google Drive
               </button>
             </div>
-
-            {backupMessage && (
-              <div
-                style={{
-                  backgroundColor: '#f0fdf4',
-                  border: '1px solid #bbf7d0',
-                  color: '#166534',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '6px',
-                  marginBottom: '1.25rem',
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                }}
-              >
-                <AlertCircle size={16} />
-                {backupMessage}
-              </div>
-            )}
 
             <table
               style={{
@@ -1746,6 +2094,1070 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* PAYROLL RUN WIZARD MODAL */}
+      {showWizard && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              width: '840px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '2rem',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+            }}
+          >
+            {/* Wizard Header */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1.5rem',
+                borderBottom: '1px solid #e2e8f0',
+                paddingBottom: '1rem',
+              }}
+            >
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+                  Payroll Run Wizard
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                  Step {wizardStep} of 2 •{' '}
+                  {wizardStep === 1 ? 'Period Setup' : 'Batch Attendance & Overtime Adjustments'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowWizard(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Step 1: Period Setup */}
+            {wizardStep === 1 && (
+              <div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '1rem',
+                    marginBottom: '1.25rem',
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      Payroll Cut-Off Description
+                    </label>
+                    <input
+                      value={wizardPeriodName}
+                      onChange={(e) => setWizardPeriodName(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      Pay Cycle
+                    </label>
+                    <select
+                      value={wizardCycleType}
+                      onChange={(e) => setWizardCycleType(e.target.value as PayCycleType)}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    >
+                      <option value="semi_monthly">Semi-Monthly (15th &amp; 30th)</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '1rem',
+                    marginBottom: '1.5rem',
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      Start Date
+                    </label>
+                    <input
+                      type="date"
+                      value={wizardStartDate}
+                      onChange={(e) => setWizardStartDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        marginBottom: '0.3rem',
+                      }}
+                    >
+                      End Date
+                    </label>
+                    <input
+                      type="date"
+                      value={wizardEndDate}
+                      onChange={(e) => setWizardEndDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: '#f8fafc',
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    marginBottom: '1.5rem',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>
+                    Active Employees to Process: {employees.length}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem' }}>
+                    Standard scheduled working days (11 days) will be assumed. You will be able to
+                    enter overtime, absences, and tardiness exceptions on the next step.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                  <button
+                    onClick={() => setShowWizard(false)}
+                    style={{
+                      padding: '0.6rem 1.25rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      background: '#ffffff',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => setWizardStep(2)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '0.6rem 1.5rem',
+                      border: 'none',
+                      borderRadius: '6px',
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Next: Review Attendance <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Batch Attendance Adjustments Grid */}
+            {wizardStep === 2 && (
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <span style={{ fontSize: '0.85rem', color: '#475569' }}>
+                    Enter attendance exceptions below (leave at 0 if no overtime or tardiness):
+                  </span>
+                  <button
+                    onClick={() => {
+                      const reset: Record<
+                        string,
+                        {
+                          ot: number;
+                          late: number;
+                          absent: number;
+                          allowance: number;
+                          loan: number;
+                        }
+                      > = {};
+                      employees.forEach((e) => {
+                        reset[e.id] = { ot: 0, late: 0, absent: 0, allowance: 1000, loan: 0 };
+                      });
+                      setAttendanceInputs(reset);
+                    }}
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '0.3rem 0.6rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '4px',
+                      background: '#f8fafc',
+                    }}
+                  >
+                    Reset All to Standard
+                  </button>
+                </div>
+
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    fontSize: '0.82rem',
+                    marginBottom: '1.5rem',
+                  }}
+                >
+                  <thead>
+                    <tr
+                      style={{
+                        backgroundColor: '#f8fafc',
+                        borderBottom: '1px solid #e2e8f0',
+                        color: '#475569',
+                      }}
+                    >
+                      <th style={{ padding: '0.5rem' }}>Employee</th>
+                      <th style={{ padding: '0.5rem', width: '90px' }}>OT (Hrs)</th>
+                      <th style={{ padding: '0.5rem', width: '90px' }}>Late (Mins)</th>
+                      <th style={{ padding: '0.5rem', width: '90px' }}>Absent (Days)</th>
+                      <th style={{ padding: '0.5rem', width: '110px' }}>Allowance (₱)</th>
+                      <th style={{ padding: '0.5rem', width: '100px' }}>Loan / Other</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employees.map((emp) => {
+                      const inp = attendanceInputs[emp.id] || {
+                        ot: 0,
+                        late: 0,
+                        absent: 0,
+                        allowance: 0,
+                        loan: 0,
+                      };
+                      return (
+                        <tr key={emp.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '0.5rem' }}>
+                            <div style={{ fontWeight: 600 }}>
+                              {emp.firstName} {emp.lastName}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                              {formatPHP(emp.basicSalaryMonthlyCentavos)}/mo
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.5rem' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={inp.ot}
+                              onChange={(e) =>
+                                setAttendanceInputs({
+                                  ...attendanceInputs,
+                                  [emp.id]: { ...inp, ot: Number(e.target.value) },
+                                })
+                              }
+                              style={{
+                                width: '100%',
+                                padding: '0.35rem',
+                                borderRadius: '4px',
+                                border: '1px solid #cbd5e1',
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: '0.5rem' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={inp.late}
+                              onChange={(e) =>
+                                setAttendanceInputs({
+                                  ...attendanceInputs,
+                                  [emp.id]: { ...inp, late: Number(e.target.value) },
+                                })
+                              }
+                              style={{
+                                width: '100%',
+                                padding: '0.35rem',
+                                borderRadius: '4px',
+                                border: '1px solid #cbd5e1',
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: '0.5rem' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={inp.absent}
+                              onChange={(e) =>
+                                setAttendanceInputs({
+                                  ...attendanceInputs,
+                                  [emp.id]: { ...inp, absent: Number(e.target.value) },
+                                })
+                              }
+                              style={{
+                                width: '100%',
+                                padding: '0.35rem',
+                                borderRadius: '4px',
+                                border: '1px solid #cbd5e1',
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: '0.5rem' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={inp.allowance}
+                              onChange={(e) =>
+                                setAttendanceInputs({
+                                  ...attendanceInputs,
+                                  [emp.id]: { ...inp, allowance: Number(e.target.value) },
+                                })
+                              }
+                              style={{
+                                width: '100%',
+                                padding: '0.35rem',
+                                borderRadius: '4px',
+                                border: '1px solid #cbd5e1',
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: '0.5rem' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={inp.loan}
+                              onChange={(e) =>
+                                setAttendanceInputs({
+                                  ...attendanceInputs,
+                                  [emp.id]: { ...inp, loan: Number(e.target.value) },
+                                })
+                              }
+                              style={{
+                                width: '100%',
+                                padding: '0.35rem',
+                                borderRadius: '4px',
+                                border: '1px solid #cbd5e1',
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <button
+                    onClick={() => setWizardStep(1)}
+                    style={{
+                      padding: '0.6rem 1.25rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      background: '#ffffff',
+                    }}
+                  >
+                    Back
+                  </button>
+
+                  <button
+                    onClick={handleProcessBatchRun}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.65rem 1.75rem',
+                      border: 'none',
+                      borderRadius: '6px',
+                      background: '#16a34a',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    <CheckCircle2 size={18} /> Compute All Payslips Now
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CONFIDENTIAL PRINTABLE PAYSLIP MODAL */}
+      {selectedPayslip && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 200,
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '10px',
+              maxWidth: '720px',
+              width: '100%',
+              maxHeight: '95vh',
+              overflowY: 'auto',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+              position: 'relative',
+            }}
+          >
+            {/* Modal Control Bar */}
+            <div
+              className="no-print"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '1rem 1.5rem',
+                borderBottom: '1px solid #e2e8f0',
+                backgroundColor: '#f8fafc',
+              }}
+            >
+              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>
+                Payslip Preview
+              </span>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  onClick={() => window.print()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '0.45rem 1rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  <Printer size={15} /> Print Payslip
+                </button>
+                <button
+                  onClick={() => setSelectedPayslip(null)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* THE FORMAL PAYSLIP DOCUMENT (Targets #printable-payslip in @media print) */}
+            <div
+              id="printable-payslip"
+              style={{ padding: '2rem', fontFamily: 'Inter, sans-serif' }}
+            >
+              {/* Company Header */}
+              <div
+                style={{
+                  borderBottom: '2px solid #0f172a',
+                  paddingBottom: '1rem',
+                  marginBottom: '1.25rem',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <div>
+                    <h2
+                      style={{
+                        fontSize: '1.25rem',
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.03em',
+                      }}
+                    >
+                      Acme Philippines Corporation
+                    </h2>
+                    <p style={{ fontSize: '0.78rem', color: '#475569' }}>
+                      Makati City, Metro Manila, Philippines • BIR RDO 044
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#2563eb' }}>
+                      CONFIDENTIAL PAYSLIP
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      {selectedPayslip.periodName}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Employee Demographics Box */}
+              <div
+                style={{
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '1rem',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '0.75rem',
+                  fontSize: '0.8rem',
+                  marginBottom: '1.5rem',
+                }}
+              >
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.7rem' }}>
+                    EMPLOYEE NAME
+                  </span>
+                  <strong style={{ color: '#0f172a' }}>
+                    {selectedPayslip.employee.firstName} {selectedPayslip.employee.lastName}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.7rem' }}>
+                    EMPLOYEE NUMBER
+                  </span>
+                  <strong>{selectedPayslip.employee.employeeNo}</strong>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.7rem' }}>
+                    DEPARTMENT / ROLE
+                  </span>
+                  <span>
+                    {selectedPayslip.employee.department} • {selectedPayslip.employee.position}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.7rem' }}>
+                    TIN NUMBER
+                  </span>
+                  <span>{selectedPayslip.employee.tin || 'N/A'}</span>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.7rem' }}>
+                    SSS / PHILHEALTH
+                  </span>
+                  <span>
+                    {selectedPayslip.employee.sssNumber || 'N/A'} /{' '}
+                    {selectedPayslip.employee.philhealthNumber || 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.7rem' }}>
+                    PAG-IBIG (HDMF)
+                  </span>
+                  <span>{selectedPayslip.employee.pagibigNumber || 'N/A'}</span>
+                </div>
+              </div>
+
+              {/* 2-Column Ledger: Earnings vs Deductions */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '1.5rem',
+                  marginBottom: '1.5rem',
+                }}
+              >
+                {/* Earnings Column */}
+                <div
+                  style={{ border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}
+                >
+                  <div
+                    style={{
+                      backgroundColor: '#f1f5f9',
+                      padding: '0.5rem 0.75rem',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      color: '#1e293b',
+                    }}
+                  >
+                    EARNINGS
+                  </div>
+                  <div
+                    style={{
+                      padding: '0.75rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.45rem',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Basic Pay</span>
+                      <strong>{formatPHP(selectedPayslip.result.basicPayCentavos)}</strong>
+                    </div>
+                    {selectedPayslip.result.overtimePayCentavos > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Overtime Pay (125%)</span>
+                        <span>{formatPHP(selectedPayslip.result.overtimePayCentavos)}</span>
+                      </div>
+                    )}
+                    {selectedPayslip.result.nightDiffPayCentavos > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Night Differential (10%)</span>
+                        <span>{formatPHP(selectedPayslip.result.nightDiffPayCentavos)}</span>
+                      </div>
+                    )}
+                    {selectedPayslip.result.nonTaxableAllowancesCentavos > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>De Minimis / Non-Tax Allowance</span>
+                        <span>
+                          {formatPHP(selectedPayslip.result.nonTaxableAllowancesCentavos)}
+                        </span>
+                      </div>
+                    )}
+                    {selectedPayslip.result.taxableAllowancesCentavos > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Taxable Allowances</span>
+                        <span>{formatPHP(selectedPayslip.result.taxableAllowancesCentavos)}</span>
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        borderTop: '1px solid #e2e8f0',
+                        paddingTop: '0.5rem',
+                        marginTop: '0.5rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontWeight: 700,
+                      }}
+                    >
+                      <span>TOTAL GROSS EARNINGS</span>
+                      <span>{formatPHP(selectedPayslip.result.grossPayCentavos)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deductions Column */}
+                <div
+                  style={{ border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden' }}
+                >
+                  <div
+                    style={{
+                      backgroundColor: '#f1f5f9',
+                      padding: '0.5rem 0.75rem',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      color: '#1e293b',
+                    }}
+                  >
+                    DEDUCTIONS
+                  </div>
+                  <div
+                    style={{
+                      padding: '0.75rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.45rem',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>SSS Contribution (EE)</span>
+                      <span>{formatPHP(selectedPayslip.result.sssEeCentavos)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>PhilHealth Premium (EE)</span>
+                      <span>{formatPHP(selectedPayslip.result.philhealthEeCentavos)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Pag-IBIG Contribution (EE)</span>
+                      <span>{formatPHP(selectedPayslip.result.pagibigEeCentavos)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>BIR Withholding Tax</span>
+                      <span>{formatPHP(selectedPayslip.result.withholdingTaxCentavos)}</span>
+                    </div>
+                    {selectedPayslip.result.tardinessDeductionCentavos > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Tardiness / Undertime</span>
+                        <span>{formatPHP(selectedPayslip.result.tardinessDeductionCentavos)}</span>
+                      </div>
+                    )}
+                    {selectedPayslip.result.absencesDeductionCentavos > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Absences</span>
+                        <span>{formatPHP(selectedPayslip.result.absencesDeductionCentavos)}</span>
+                      </div>
+                    )}
+                    {selectedPayslip.result.otherDeductionsCentavos > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Loan / Company Advance</span>
+                        <span>{formatPHP(selectedPayslip.result.otherDeductionsCentavos)}</span>
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        borderTop: '1px solid #e2e8f0',
+                        paddingTop: '0.5rem',
+                        marginTop: '0.5rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontWeight: 700,
+                      }}
+                    >
+                      <span>TOTAL DEDUCTIONS</span>
+                      <span>{formatPHP(selectedPayslip.result.totalDeductionsCentavos)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Net Pay Callout */}
+              <div
+                style={{
+                  backgroundColor: '#f0fdf4',
+                  border: '2px solid #86efac',
+                  borderRadius: '6px',
+                  padding: '1rem 1.5rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '1.75rem',
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      color: '#166534',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    NET TAKE-HOME PAY
+                  </div>
+                  <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#14532d' }}>
+                    {formatPHP(selectedPayslip.result.netPayCentavos)}
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#15803d', textAlign: 'right' }}>
+                  Bank Disbursement Ready
+                  <br />
+                  Taxable Income: {formatPHP(selectedPayslip.result.taxableIncomeCentavos)}
+                </div>
+              </div>
+
+              {/* Employer Contributions Note */}
+              <div
+                style={{
+                  fontSize: '0.72rem',
+                  color: '#64748b',
+                  backgroundColor: '#f8fafc',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '4px',
+                  marginBottom: '2rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span>
+                  Employer Remittance: SSS (+EC): {formatPHP(selectedPayslip.result.sssErCentavos)}
+                </span>
+                <span>PhilHealth: {formatPHP(selectedPayslip.result.philhealthErCentavos)}</span>
+                <span>Pag-IBIG: {formatPHP(selectedPayslip.result.pagibigErCentavos)}</span>
+              </div>
+
+              {/* Employee Acknowledgment Block */}
+              <div
+                style={{
+                  borderTop: '1px solid #cbd5e1',
+                  paddingTop: '1.25rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-end',
+                  fontSize: '0.75rem',
+                  color: '#475569',
+                }}
+              >
+                <div style={{ maxWidth: '380px' }}>
+                  I acknowledge receipt of the payment indicated herein and have no further claims
+                  against the company for the period covered.
+                </div>
+                <div style={{ textAlign: 'center', minWidth: '220px' }}>
+                  <div
+                    style={{
+                      borderBottom: '1px solid #0f172a',
+                      height: '30px',
+                      marginBottom: '0.25rem',
+                    }}
+                  ></div>
+                  <span style={{ fontWeight: 600 }}>Employee Signature / Date</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD EMPLOYEE MODAL (Unchanged) */}
+      {showAddModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 150,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '10px',
+              padding: '1.75rem',
+              width: '460px',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+            }}
+          >
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
+              Add New Employee
+            </h3>
+
+            <form onSubmit={handleCreateEmployee}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '0.75rem',
+                  marginBottom: '0.75rem',
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      marginBottom: '0.2rem',
+                    }}
+                  >
+                    First Name
+                  </label>
+                  <input
+                    required
+                    value={newFirstName}
+                    onChange={(e) => setNewFirstName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      marginBottom: '0.2rem',
+                    }}
+                  >
+                    Last Name
+                  </label>
+                  <input
+                    required
+                    value={newLastName}
+                    onChange={(e) => setNewLastName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    marginBottom: '0.2rem',
+                  }}
+                >
+                  Department
+                </label>
+                <input
+                  value={newDepartment}
+                  onChange={(e) => setNewDepartment(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    marginBottom: '0.2rem',
+                  }}
+                >
+                  Position
+                </label>
+                <input
+                  value={newPosition}
+                  onChange={(e) => setNewPosition(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    marginBottom: '0.2rem',
+                  }}
+                >
+                  Monthly Salary (₱)
+                </label>
+                <input
+                  type="number"
+                  min="10000"
+                  step="1000"
+                  value={newSalary}
+                  onChange={(e) => setNewSalary(Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '0.5rem 1.25rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  Save Employee
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

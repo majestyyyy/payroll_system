@@ -61,3 +61,32 @@ textarea {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Print Media Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #printable-payslip,
+  #printable-payslip * {
+    visibility: visible;
+  }
+
+  #printable-payslip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

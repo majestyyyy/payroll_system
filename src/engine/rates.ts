@@ -73,7 +73,10 @@ export function calculateNightDifferentialPay(
   nightDiffHours: number
 ): number {
   if (nightDiffHours <= 0) return 0;
-  const ndHourlyBonus = multiplyCentavos(hourlyRateCentavos, STATUTORY_MULTIPLIERS.NIGHT_DIFF_PREMIUM);
+  const ndHourlyBonus = multiplyCentavos(
+    hourlyRateCentavos,
+    STATUTORY_MULTIPLIERS.NIGHT_DIFF_PREMIUM
+  );
   return Math.round(ndHourlyBonus * nightDiffHours);
 }
 
